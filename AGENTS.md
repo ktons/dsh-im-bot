@@ -15,6 +15,7 @@
 ### plugins/DS-Bot 内部
 
 - `ds-bot/` → 插件 `ds-bot` v0.3.6（Bot 团队/群聊/记忆）。**client.js 是已提交的预构建产物，安装/链接均无需构建**；只有改 `src/client/` 或 `link/` 源码才需 `npm run build`（要 esbuild，先 npm install）。
+- **本地目录（link）方式安装进桌面端前，必须先在 `ds-bot/` 里 `npm ci --no-audit --no-fund --registry=https://registry.npmmirror.com`**——否则宿主从 checkout 直接加载时报 `ERR_MODULE_NOT_FOUND`（首个是 `deep-view`）。`@deepseek-ai/*` 一类 peer 依赖不落盘属正常，由 dsh 宿主运行时注入；若激活报缺 `@deepseek-ai/dsh-llm`，即 dsh 版本过低（见下方版本兼容注意）。
 - `link/` → 插件 `ds-bot-link` v0.1.0（版本独立，落后于主插件）。
 
 ### 遗留物
