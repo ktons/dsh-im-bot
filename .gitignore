@@ -1,0 +1,11 @@
+# 构建产物与部署目录（桌面端绿色版，可由 deploy-dsh-bin.ps1 随时重建）
+bin/
+
+# 嵌套的独立 git 仓库（各自有自己的远程与分支管理，不入本仓）
+dsh/
+plugins/
+
+# 系统杂项
+Thumbs.db
+Desktop.ini
+*.log
