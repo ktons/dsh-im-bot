@@ -14,8 +14,7 @@
 
 ### plugins/DS-Bot 内部
 
-- `ds-bot/` → 插件 `ds-bot` v0.3.6（Bot 团队/群聊/记忆）。**client.js 是已提交的预构建产物，安装/链接均无需构建**；只有改 `src/client/` 或 `link/` 源码才需 `npm run build`（要 esbuild，先 npm install）。
-- **本地目录（link）方式安装进桌面端前，必须先在 `ds-bot/` 里 `npm ci --no-audit --no-fund --registry=https://registry.npmmirror.com`**——否则宿主从 checkout 直接加载时报 `ERR_MODULE_NOT_FOUND`（首个是 `deep-view`）。`@deepseek-ai/*` 一类 peer 依赖不落盘属正常，由 dsh 宿主运行时注入；若激活报缺 `@deepseek-ai/dsh-llm`，即 dsh 版本过低（见下方版本兼容注意）。
+- `ds-bot/` → 插件 `ds-bot` v0.3.6（Bot 团队/群聊/记忆）：`client.js` 为已提交的预构建产物，只有改源码才需构建。安装/升级插件的流程与排障见 skill：**dsh-plugin-install**。
 - `link/` → 插件 `ds-bot-link` v0.1.0（版本独立，落后于主插件）。
 
 ### 遗留物
@@ -27,30 +26,19 @@
 - `ds-bot` 0.3.6 README 声明测试基线为 **dsh 0.2.2-rc.1**；本工作区 dsh 钉在 **0.2.1-rc.5**（少 3434 个提交）。插件若出 API 不兼容，优先考虑把 dsh stable 重定到 `dsh-v0.2.2-rc.1`（`66491b05`，即 master tip `fcc0ad46` 所在合并点附近，stash 也属于那个时代）。
 - `dsh` 本地分支 `dsh-v0.2.1-rc.5` **名不副实**：它指向 master tip（`fcc0ad46`），与同名 tag（`b830ec95`）相差 3434 提交。引用该版本时务必用 `refs/tags/dsh-v0.2.1-rc.5` 消歧。
 
-## 桌面端构建与部署（详见 skill：dsh-desktop-release）
+## 桌面端构建与部署（准则）
 
-- 打包命令（Git Bash，在 `dsh/apps/desktop` 下）：
+- 桌面端为 release 级**未签名 unpacked** 构建；产物经 `deploy-dsh-bin.ps1` 同步进 `bin/`，启动用 `start-dsh.cmd` / `start-dsh.ps1` 或直接双击 `bin\DeepSeek Harness.exe`（应用自包含、不依赖 CWD、单实例锁）。
+- 打包、部署、验证、排障的完整操作见 skill：**dsh-desktop-release**。
+- 温启动实测基线：窗口 ~2.1s，工作区可用 ~2.7s。
 
-  ```sh
-  export PATH="/c/Windows/System32:$PATH" HTTP_PROXY=http://127.0.0.1:7897 \
-         HTTPS_PROXY=http://127.0.0.1:7897 \
-         ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ \
-         DSH_GATE_CONCURRENCY=1
-  pnpm run package -- --dir --unsigned
-  ```
+## 环境事实（排障时先核对这些）
 
-- 打包产物 → `dsh/apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-unpacked/`
-- 部署到 bin：`powershell -File D:\Agent\deepseek\deploy-dsh-bin.ps1`（自动停运行实例、只增改不删）
-- 启动：`start-dsh.cmd` / `start-dsh.ps1`，或直接双击 `bin\DeepSeek Harness.exe`（应用自包含、不依赖 CWD、单实例锁）
-- 温启动实测：窗口 ~2.1s，工作区可用 ~2.7s
-
-## 环境事实
-
-- Node v22.23.3（满足 22.19+ 要求），pnpm 11.28.5 经 corepack 启用（`corepack enable pnpm`）
-- VS 18 Community（含 VC++ 工具链，打包预检需要）；Git Bash 的 GNU tar 有盘符 bug，打包时必须让 System32 bsdtar 优先
-- 本机代理：`127.0.0.1:7897`（HTTP）——GitHub 直连超时时的解法；electron-builder 二进制走 npmmirror 镜像
-- 内存教训：Host bundle（rolldown 打桌面主包）需要大量 commit 内存，大型程序（如游戏）占 8GB+ 时会 OOM（exit 0xC0000409）；必要时 `DSH_GATE_CONCURRENCY=1` 并请用户临时关闭大内存程序
-- `dsh/apps/desktop/.env.windows`：本地未签名打包配置（app id、test 部署源、npmmirror 注册表），git 忽略，勿提交勿删除
+- Node v22.23.3、pnpm 11.28.5（corepack 启用）；VS 18 Community 含 VC++ 工具链（打包预检需要）
+- Git Bash 的 GNU tar 对 `D:\` 路径有远程主机误判 bug（System32 的 bsdtar 无此问题）
+- 本机代理 `127.0.0.1:7897`（HTTP）；GitHub 直连超时，npmmirror 可用作 npm 源与 electron-builder 二进制源
+- 内存 30.6GB；Host bundle 打包需大量 commit 内存，与大内存程序并存时会 OOM（exit 0xC0000409）
+- `dsh/apps/desktop/.env.windows`：本地未签名打包配置（git 忽略），勿提交勿删除
 
 ## 迭代约定
 
