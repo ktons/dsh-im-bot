@@ -3,19 +3,20 @@
 本目录**不是** git 仓库，而是一个多仓库工作区：围绕 DeepSeek Harness（dsh）做本地构建、插件集成与迭代。
 本文件记录工作区现状与约定；各子仓库内部工作时应遵循**该仓库自己的** AGENTS.md（如在 `dsh/` 内工作时加载 `dsh/AGENTS.md`）。
 
-## 目录布局与仓库状态（2026-11-15 快照）
+## 目录布局与仓库状态（2026-11-18 快照）
 
 | 路径 | 内容 | 仓库 / 远程 | 当前检出 |
 |------|------|-------------|----------|
 | `dsh/` | DeepSeek Harness 主仓（pnpm monorepo） | `git@github.com:deepseek-ai/deepseek-harness.git` | 分支 `stable` ← tag `dsh-v0.2.1-rc.5`（`b830ec95`） |
 | `plugins/dsh-im/` | IM 接入插件（微信/飞书/TG 等→DSH） | `git@github.com:xmanrui/dsh-im.git` | detached HEAD @ `v5.10.0`（`c826bfa4`） |
-| `plugins/DS-Bot/` | DS-Bot 仓库（含两个 dsh 插件） | `git@github.com:Fei2411/DS-Bot.git` | 分支 `stable` ← tag `v0.3.6`（`a66cc737`） |
+| `plugins/DS-Bot/` | DS-Bot 仓库（含两个 dsh 插件） | `git@github.com:ktons/DS-Bot.git`（上游 Fei2411/DS-Bot 的 fork，2026-11-18 换源） | 分支 `stable` ← `main`（v0.3.8 release 合并 `5e9b7da8`） |
 | `bin/` | 已部署的桌面端产物（绿色版，1.1GB） | — | dsh v0.2.1-rc.5，win-x64，未签名 unpacked |
 
 ### plugins/DS-Bot 内部
 
-- `ds-bot/` → 插件 `ds-bot` v0.3.6（Bot 团队/群聊/记忆）：`client.js` 为已提交的预构建产物，只有改源码才需构建。安装/升级插件的流程与排障见 skill：**dsh-plugin-install**。
+- `ds-bot/` → 插件 `ds-bot` v0.3.8（Bot 团队/群聊/记忆）：`client.js` 为已提交的预构建产物，只有改源码才需构建。安装/升级插件的流程与排障见 skill：**dsh-plugin-install**。
 - `link/` → 插件 `ds-bot-link` v0.1.0（版本独立，落后于主插件）。
+- fork 远程**无 tag**：`stable` 取 `main` 上 release 合并点为基线，并 track `origin/main`；本地保留的旧 `v*` tag 属 Fei2411 时代遗物，仅作历史参考。
 
 ### 遗留物
 
@@ -23,7 +24,7 @@
 
 ## 版本兼容注意
 
-- `ds-bot` 0.3.6 README 声明测试基线为 **dsh 0.2.2-rc.1**；本工作区 dsh 钉在 **0.2.1-rc.5**（少 3434 个提交）。插件若出 API 不兼容，优先考虑把 dsh stable 重定到 `dsh-v0.2.2-rc.1`（`66491b05`，即 master tip `fcc0ad46` 所在合并点附近，stash 也属于那个时代）。
+- `ds-bot` 0.3.8 README 声明测试基线为 **dsh 0.2.2-rc.1**（0.3.6 相同）；本工作区 dsh 钉在 **0.2.1-rc.5**（少 3434 个提交）。插件若出 API 不兼容，优先考虑把 dsh stable 重定到 `dsh-v0.2.2-rc.1`（`66491b05`，即 master tip `fcc0ad46` 所在合并点附近，stash 也属于那个时代）。
 - `dsh` 本地分支 `dsh-v0.2.1-rc.5` **名不副实**：它指向 master tip（`fcc0ad46`），与同名 tag（`b830ec95`）相差 3434 提交。引用该版本时务必用 `refs/tags/dsh-v0.2.1-rc.5` 消歧。
 
 ## 桌面端构建与部署（准则）

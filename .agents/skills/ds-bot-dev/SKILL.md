@@ -5,7 +5,7 @@ description: DS-Bot 仓库（plugins/DS-Bot）的架构地图与迭代指南：d
 
 # DS-Bot 迭代与架构指南
 
-仓库 `plugins/DS-Bot`（上游 `git@github.com:Fei2411/DS-Bot.git`，工作区检出 `stable` ← tag）。两部分：`ds-bot/` 是 DSH 插件（Bot 功能本体），`app/` 是桌面 App（自带钉版 DSH + 本插件，独立 DSH_HOME）。改动前先读仓库自己的 `AGENTS.md`（硬规则、命令、分支规范）。
+仓库 `plugins/DS-Bot`（远程 `git@github.com:ktons/DS-Bot.git`，上游 Fei2411/DS-Bot 的 fork、无 tag；工作区检出 `stable` ← `main` 上 release 合并点，2026-11-18 起为 v0.3.8 `5e9b7da8`）。两部分：`ds-bot/` 是 DSH 插件（Bot 功能本体），`app/` 是桌面 App（自带钉版 DSH + 本插件，独立 DSH_HOME）。改动前先读仓库自己的 `AGENTS.md`（硬规则、命令、分支规范）。
 
 ## 架构地图（src/host 关键文件）
 
@@ -53,6 +53,6 @@ dev/bench.sh smoke 3096 8796 stop
 
 ## 版本兼容与工作区现状
 
-- `ds-bot` 0.3.6 声明测试基线 **dsh 0.2.2-rc.1**；本工作区 dsh 钉在 **0.2.1-rc.5**（少 3434 提交）。插件 API 不兼容时优先考虑把 dsh stable 重定基线，见 skill **dsh-release-bump**。
+- `ds-bot` 0.3.8 声明测试基线 **dsh 0.2.2-rc.1**；本工作区 dsh 钉在 **0.2.1-rc.5**（少 3434 提交）。插件 API 不兼容时优先考虑把 dsh stable 重定基线，见 skill **dsh-release-bump**。
 - `link/`（ds-bot-link 0.1.0）版本独立、落后主插件；`ds-bot/client.js` 已随 tag 提交、装进桌面端无需构建。
 - 升级 tag → skill **dsh-release-bump**；装进桌面端 → skill **dsh-plugin-install**；重建桌面端 → skill **dsh-desktop-release**。换版本/重打包后更新工作区 `AGENTS.md` 快照表。
