@@ -24,7 +24,8 @@
 
 ## 版本兼容注意
 
-- `ds-bot` 0.3.8 README 声明测试基线为 **dsh 0.2.2-rc.1**（0.3.6 相同）；本工作区 dsh 钉在 **0.2.1-rc.5**（少 3434 个提交）。插件若出 API 不兼容，优先考虑把 dsh stable 重定到 `dsh-v0.2.2-rc.1`（`66491b05`，即 master tip `fcc0ad46` 所在合并点附近，stash 也属于那个时代）。
+- `ds-bot` 0.3.8 README 声明测试基线为 **dsh 0.2.2-rc.1**（0.3.6 相同）；本工作区 dsh 钉在 **0.2.1-rc.5**（少 3434 个提交）。**0.2.1-rc.5 已实测可用（2026-11-18 用户验证）——勿再主动建议重定基线**；仅当真实出现 API 不兼容报错时才考虑把 dsh stable 重定到 `dsh-v0.2.2-rc.1`（`66491b05`，即 master tip `fcc0ad46` 所在合并点附近，stash 也属于那个时代）。
+- 插件迭代规划见 `docs/ds-bot-roadmap.md`（已裁决：不重定基线、ask_user 全局拆、lane 跟随 agentPreset）。
 - `dsh` 本地分支 `dsh-v0.2.1-rc.5` **名不副实**：它指向 master tip（`fcc0ad46`），与同名 tag（`b830ec95`）相差 3434 提交。引用该版本时务必用 `refs/tags/dsh-v0.2.1-rc.5` 消歧。
 
 ## 桌面端构建与部署（准则）

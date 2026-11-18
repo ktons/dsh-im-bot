@@ -8,22 +8,22 @@
 
 | 线 | 内容 | 对应需求 | 性质 |
 |---|---|---|---|
-| R0 | 基线对齐（dsh 重定 0.2.2-rc.1） | 前置 | 工作区操作 |
+| R0 | 基线对齐——**已裁决不做**（0.2.1-rc.5 实测可用） | 已关闭 | — |
 | R1 | IM 换血：dsh-im 桥接接管 QQ/飞书，废除 ds-bot 自带 IM 层 | 需求 1 | ds-bot + dsh-im |
 | R2 | 新增 standard 模板 Bot（无 message_bot/协作提示词） | 需求 2 | ds-bot |
 | R3 | lane 通信协议（lane = 普通 dsh 会话，standard Bot 派活/收反馈） | 需求 3 | ds-bot |
 | R4 | 面板扩展：原始工作区模式（每工作区一块会话板，lane 上板） | 需求 4 | ds-bot |
 | R5 | 撤掉会话替身，回归 dsh 原生会话卡片（思考/工具调用/详情可调） | 需求 5 | ds-bot |
 
-**依赖链**：R0 → R1a（配置桥）→ R2 → R3 → R4；R1b（废除代码）在 R1a 验证通过后执行；R5 与 R2/R4 并行分步（standard Bot 先行），team Bot 撤皮收尾；R1c（dsh-im 补发修复）视 R1a 后观察决定。
+**依赖链**：R1a（配置桥）→ R2 → R3 → R4；R1b（废除代码）在 R1a 验证通过后执行；R5 与 R2/R4 并行分步（standard Bot 先行），team Bot 撤皮收尾；R1c（dsh-im 补发修复）视 R1a 后观察决定。R0 已裁决不做（见决策记录）。
 
 ---
 
-## R0 基线对齐（建议先做，约半天）
+## R0 基线——已裁决：不重定（2026-11-18）
 
-- ds-bot 0.3.8 声明测试基线为 dsh **0.2.2-rc.1**；工作区 dsh 钉 **0.2.1-rc.5**（少 3434 提交）。R3–R5 深度依赖 `sessionController` / `workspaceController` / `sidebarRightTabs` / slots 等客户端与 host API，测试结论只在声明基线上可信。
-- 动作：按 skill **dsh-release-bump** 把 dsh stable 重定到 `dsh-v0.2.2-rc.1`（`66491b05`），重打包桌面端。顺手可弹 `stash@{0}`——它正是 0.2.2-rc.1 时代的归档整理（AGENTS.md 遗留物条款要求先切回该基点再弹，重定基线正好满足）。
-- dsh-im 现为 detached @ v5.10.0：同法建 `stable` 分支，让 R1c 的改动有基线可归。
+- **dsh 0.2.1-rc.5 已实测可用（用户验证），基线不动，此后勿再提议重定**。本事实已同步记入工作区 AGENTS.md 与 skill ds-bot-dev；R3–R5 依赖的 `sessionController` / `workspaceController` / `sidebarRightTabs` / slots API 均已在该基线上实证存在（见各线 file:line）。
+- 仅当真实出现 API 不兼容报错时才按 skill **dsh-release-bump** 重定到 `dsh-v0.2.2-rc.1`；`stash@{0}` 维持现状（弹取条件不变）。
+- dsh-im 现为 detached @ v5.10.0：R1c 动代码前建 `stable` 分支，让改动有基线可归。
 
 ## R1 IM 换血（需求 1）
 
@@ -66,7 +66,7 @@
 | 引用文案 | `tools.js:39` DELEGATION_REFUSAL、`memory.js:417-419`、`memory-copy.js:19,28`、`roster.js:233-243` kickoff OWN_RULES | standard 分支换无协作措辞 |
 | 客户端 | `cells.js` / `mark.js` 仅展示层 | 可不改 |
 
-**决策点——与原 Phase 1（去提问化）的合并**：原计划全局删 `ask_user` 工具、禁交互视图、改写 prompt 三处（设计稿 §4.3）。引入 standard 后可选**只对 standard 模板拆提问**（standard 会话不注册 ask_user/show_view 交互卡，team 保留）；IM 绑定场景用 standard Bot 即可闭环。建议：prompt 三处改写随 standard 落地，全局 ask_user 拆除降级为可选项。
+**决策（已定，2026-11-18）：ask_user 全局拆**——按原设计稿 Phase 1 全量执行（删 `ask_user` 工具注册、禁 `show_view` 交互视图、改写 prompt 三处，§4.3），team 与 standard 一律拆（ask_user 判定没用）。桥上的问题卡同步（`ds-bot-question-sync.mjs`）与 QQ"去桌面端回答"降级文本随之自然消失。
 
 验收：创建 Standard Bot → 其会话 system prompt 无 MAIN_RULES/TEAM_RULES、无协作工具；既有 team Bot 零变化；构建检查全套绿。
 
@@ -91,7 +91,7 @@ ds-bot 侧新增（host `lanes.js` + 工具）：
 3. **反馈回投**：`turn/end` → 提取最终文本 → 注入所属 Bot 当前 part；Bot 端工具 `lane_send` / `lane_status` / `lane_read` / `lane_cancel`；
 4. **归属保护**：lane session 登记进 `indexSessions`（`store.js:533-578`），避免被 `adoptAgentSession` 收编（`agents.js:49-59` 的 owned 检查）；lane 是普通会话、无 parts 分段机制，与 Bot 会话滚动天然隔离。
 
-**决策点——lane 权限面**：lane 是全工具权限的普通会话（Bot 会话是 scoped 工具）。是否用 `agentPreset` 限权、lane 内危险操作是否照常走 approvals，实现设计时定。
+**决策（已定，2026-11-18）：lane 跟随 agentPreset**——创建 lane 时当前预设是什么就带什么，不做 lane 专属限权设计；lane 内危险操作照常走 dsh approvals。
 
 验收：standard Bot 在会话里 `lane_send` 派活 → lane 会话独立跑完 → 结果文本回投 Bot 会话；`/api/bot` 路由可查 lane 列表（`channel.js:947-957` 路由机制现成）。
 
@@ -126,7 +126,7 @@ ds-bot 侧新增（host `lanes.js` + 工具）：
 
 1. standard Bot 先行（R2 交付即原生渲染，无历史包袱）；
 2. lane 会话原生（R4 点开即 plain，天然原生）;
-3. team Bot 撤皮收尾：逐替身盘点去留——真有价值的（BotMention @高亮、user-text 规则、Bot 身份徽标）以原生之上的轻量注入重建（独立 slot 或 user 卡附加徽标），纯掩盖的（DRAWN 白名单、dock 清空、压缩卡清空）直接撤；ask_user 卡去留随 R2 决策；
+3. team Bot 撤皮收尾：逐替身盘点去留——真有价值的（BotMention @高亮、user-text 规则、Bot 身份徽标）以原生之上的轻量注入重建（独立 slot 或 user 卡附加徽标），纯掩盖的（DRAWN 白名单、dock 清空、压缩卡清空）直接撤；ask_user/show_view 卡相关替身随全局拆除一并删除；
 4. 验收：Bot 会话可见思考卡、工具调用树、可展开详情、右栏 dock 详情面板可用；"哪个 Bot 在说"在原生渲染下仍有标记；压缩/context 卡恢复显示；回滚 = 还原 index.js 安装清单提交。
 
 ---
@@ -135,8 +135,7 @@ ds-bot 侧新增（host `lanes.js` + 工具）：
 
 | 里程碑 | 内容 | 前置 |
 |---|---|---|
-| M0 | dsh 重定 0.2.2-rc.1 + 桌面端重打包（R0） | — |
-| M1 | 桥接验证通过，QQ/飞书经 dsh-im 到达 ds-bot Bot（R1a） | M0 建议 |
+| M1 | 桥接验证通过，QQ/飞书经 dsh-im 到达 ds-bot Bot（R1a） | — |
 | M2 | standard 模板 Bot 可创建、可用（R2） | — |
 | M3 | lane 协议闭环：派活 → 干活 → 反馈回 Bot（R3） | M2 |
 | M4 | 工作区板上板（R4） | M3 |
@@ -144,11 +143,16 @@ ds-bot 侧新增（host `lanes.js` + 工具）：
 | M6 | team Bot 原生卡片回归完成（R5 收尾） | M2（分步进行） |
 | M7 | dsh-im 补发修复（R1c，视 M1 后观察） | M1 |
 
-## 风险与决策点
+## 决策记录（2026-11-18）
 
-1. **版本漂移**（R0 缓解）：不重定基线则 R3–R5 的 API 在 0.2.1-rc.5 与 0.2.2-rc.1 间行为可能不一致；ds-bot 0.3.8 的测试结论只在声明基线上可信。
-2. **ask_user 去留**（R2 决策点）：全局拆（原 Phase 1）vs 仅 standard 模板拆；影响桥上问题卡同步（`ds-bot-question-sync.mjs`）是否自然消失。
-3. **lane 权限面**（R3 决策点）：全工具 vs `agentPreset` 限权；lane 内危险操作是否照常走 approvals。
-4. **替身功能回归**（R5）：@提及、身份徽标等真需求需以原生方式重建；逐替身盘点，勿一刀切。
-5. **废除不可逆面**（R1b）：dsh-im 未覆盖的渠道（TG 等）随删除消失；git 历史可回。
-6. **各线开工规范**：ds-bot 内遵循其 `dev` 分支 PR 规范（`feat/lane-*` 等）；每线落地时的详细实现设计文档放 DS-Bot 仓库 `docs/plans/`（上游惯例），本文件只维护路线与决策点。
+| 决策点 | 裁决 |
+|---|---|
+| dsh 基线（原 R0） | **不重定**。0.2.1-rc.5 实测可用，勿再提议；仅真实 API 不兼容时才重定（已同步 AGENTS.md / skill ds-bot-dev） |
+| ask_user 去留（R2） | **全局拆**。按设计稿 Phase 1 全量执行，team/standard 一律无 ask_user（判定没用）；桥上问题卡同步随之消失 |
+| lane 权限（R3） | **跟随 agentPreset**。当前预设是什么就带什么，不做 lane 专属限权；危险操作照常走 approvals |
+
+## 风险
+
+1. **替身功能回归**（R5）：@提及、身份徽标等真需求需以原生方式重建；逐替身盘点，勿一刀切。
+2. **废除不可逆面**（R1b）：dsh-im 未覆盖的渠道（TG 等）随删除消失；git 历史可回。
+3. **各线开工规范**：ds-bot 内遵循其 `dev` 分支 PR 规范（`feat/lane-*` 等）；每线落地时的详细实现设计文档放 DS-Bot 仓库 `docs/plans/`（上游惯例），本文件只维护路线与决策记录。

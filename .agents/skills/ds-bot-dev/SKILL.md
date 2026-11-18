@@ -53,6 +53,6 @@ dev/bench.sh smoke 3096 8796 stop
 
 ## 版本兼容与工作区现状
 
-- `ds-bot` 0.3.8 声明测试基线 **dsh 0.2.2-rc.1**；本工作区 dsh 钉在 **0.2.1-rc.5**（少 3434 提交）。插件 API 不兼容时优先考虑把 dsh stable 重定基线，见 skill **dsh-release-bump**。
+- `ds-bot` 0.3.8 声明测试基线 **dsh 0.2.2-rc.1**；本工作区 dsh 钉在 **0.2.1-rc.5**（少 3434 提交）。**0.2.1-rc.5 已实测可用（2026-11-18 用户验证），勿主动建议重定基线**；仅真实 API 不兼容时才重定，见 skill **dsh-release-bump**。插件迭代规划见工作区 `docs/ds-bot-roadmap.md`。
 - `link/`（ds-bot-link 0.1.0）版本独立、落后主插件；`ds-bot/client.js` 已随 tag 提交、装进桌面端无需构建。
 - 升级 tag → skill **dsh-release-bump**；装进桌面端 → skill **dsh-plugin-install**；重建桌面端 → skill **dsh-desktop-release**。换版本/重打包后更新工作区 `AGENTS.md` 快照表。
