@@ -40,7 +40,9 @@ CONTEXT_WINDOW=100000 CHECK_RATIO=0.45 dev/bench.sh smoke 3096 8796 reset && nod
 dev/bench.sh smoke 3096 8796 stop
 ```
 
-- 改了 `src/client/` **必须** `npm run build` 并把 `client.js` 与源码一起提交；**绝不手改 `client.js`**（生成物）。
+- 改了 `src/client/` **必须** `npm run build` 并把 `client.js` 与源码一起提交；**绝不手改 `client.js`**（生成物）。`npm run build` 里的 build-link 步骤在本工作区会失败（`link/` 未 npm ci 装依赖），build-client 成功即够用。
+- **Git Bash 跑 `dev/bench.sh` 的坑**：pnpm 对 MSYS 风格 `link:/d/...` 路径会生成坏符号链接（指向 `/d/d/...`），dsh 报 `cannot resolve profile bundle "ds-bot"`、冒烟表现为 `state.json ENOENT`。修法：删掉 `.dsh-test-<name>/profiles/web/node_modules/ds-bot` 坏链，`cmd //c "mklink /J ds-bot <ds-bot 的 Windows 绝对路径>"` 重建 junction，再 reset（ensure_profile 见 package.json 已含 link: 串会跳过重装）。冒烟需 `DSH_HARNESS` 指向 DSH checkout，本工作区用 `/d/Agent/deepseek/dsh`。
+- 单测有 3 个本工作区环境性失败（与插件代码无关）：`link.js is the build of ../link/src`、`test/phone.test.js`（link/ 缺 `ws`）、mobile 的 markdown-image（Windows symlink EPERM）。
 - 完成标准：`npm test` + `--check` + `npm run lint` 全过；动了 `index.js` 或 `src/host/` 还要跑冒烟。测试用 mock 模型（`dev/mock-llm.mjs`），不需要 API key。
 - 测试台数据在 `.dsh-test-<name>/`；**严禁**指向 `~/.dsh`、桌面 App 数据或用户正在跑的 DSH。
 

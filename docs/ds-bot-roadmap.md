@@ -70,6 +70,8 @@
 
 验收：创建 Standard Bot → 其会话 system prompt 无 MAIN_RULES/TEAM_RULES、无协作工具；既有 team Bot 零变化；构建检查全套绿。
 
+> **进度（2026-11-18）**：已落地于 DS-Bot 分支 `feat/standard-template`（`ab6b2689`）——template 字段/创建链路/提示词分支/工具 scope/文案分支/i18n（7 语言）/create 表单选择，连同裁决的 ask_user 全局退役（含交互视图拒绝）；设计文档在 DS-Bot `docs/plans/2026-11-18-standard-template.md`。`npm test` 2887 过（3 个失败均为本工作区环境性：link/ 缺依赖 ×2、Windows symlink EPERM ×1）、lint/--check 绿、冒烟 51 步全绿（`dev/bench.sh`+mock）。**尚未装进桌面端**；push/PR 待定。
+
 ## R3 lane 通信协议（需求 3）
 
 **定义**：lane = 一个**普通 dsh 会话**（header.origin 未设置，`packages/core/session/src/types.ts:95-124`），挂在工作区账目下，由 standard Bot 派活与收反馈。派活 = 向该会话 prompt；反馈 = ds-bot host 监听 lane 会话事件提取结果并回投 Bot 会话。
