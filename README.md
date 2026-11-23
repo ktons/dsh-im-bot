@@ -1,6 +1,6 @@
 # deepseek 工作区
 
-围绕 DeepSeek Harness（dsh）的多仓工作区：桌面端本地构建部署、插件集成与迭代。
+围绕 DeepSeek Harness（dsh）的工作区：桌面端本地构建部署、插件集成与迭代。整个工作区是一个私有 git 仓库——`dsh/` 为 submodule 钉在上游 release tag，`plugins/` 下两个插件为源码快照。
 工作区结构与迭代约定见 [AGENTS.md](AGENTS.md)。
 
 **本 README 是一次性来源说明，写明两个插件的上游出处与快照版本，后续不再随代码演进更新。**

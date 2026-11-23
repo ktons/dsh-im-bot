@@ -1,11 +1,11 @@
 ---
 name: ds-bot-dev
-description: DS-Bot 仓库（plugins/DS-Bot）的架构地图与迭代指南：ds-bot 插件的提示词/会话分段/记忆机制在哪个文件、改代码怎么构建测试、版本兼容基线、分支与提交规范。当用户要改 ds-bot 代码、排查 Bot 行为（提示词/记忆/压缩/交接）、问"这个机制在哪实现"、或要为 ds-bot 做迭代时使用。
+description: DS-Bot 源码快照（plugins/DS-Bot）的架构地图与迭代指南：ds-bot 插件的提示词/会话分段/记忆机制在哪个文件、改代码怎么构建测试、版本兼容基线。当用户要改 ds-bot 代码、排查 Bot 行为（提示词/记忆/压缩/交接）、问"这个机制在哪实现"、或要为 ds-bot 做迭代时使用。
 ---
 
 # DS-Bot 迭代与架构指南
 
-仓库 `plugins/DS-Bot`（远程 `git@github.com:ktons/DS-Bot.git`，上游 Fei2411/DS-Bot 的 fork、无 tag；工作区检出 `stable` ← `main` 上 release 合并点，2026-11-18 起为 v0.3.8 `5e9b7da8`）。两部分：`ds-bot/` 是 DSH 插件（Bot 功能本体），`app/` 是桌面 App（自带钉版 DSH + 本插件，独立 DSH_HOME）。改动前先读仓库自己的 `AGENTS.md`（硬规则、命令、分支规范）。
+目录 `plugins/DS-Bot` 是**源码快照**（上游 Fei2411/DS-Bot `v0.3.10` `d104d9c`，2026-11-23 收编；无 `.git`、不再跟上游，出处见根 `README.md`，改动直接在工作区超仓 `ktons/dsh-im-bot` 提交）。两部分：`ds-bot/` 是 DSH 插件（Bot 功能本体），`app/` 是桌面 App（自带钉版 DSH + 本插件，独立 DSH_HOME）。改动前可读目录自带的 `AGENTS.md`（硬规则、命令参考；其分支/PR 规范已随收编失效）。
 
 ## 架构地图（src/host 关键文件）
 
@@ -46,15 +46,15 @@ dev/bench.sh smoke 3096 8796 stop
 - 完成标准：`npm test` + `--check` + `npm run lint` 全过；动了 `index.js` 或 `src/host/` 还要跑冒烟。测试用 mock 模型（`dev/mock-llm.mjs`），不需要 API key。
 - 测试台数据在 `.dsh-test-<name>/`；**严禁**指向 `~/.dsh`、桌面 App 数据或用户正在跑的 DSH。
 
-## 分支与提交（上游仓库规范）
+## 提交（工作区超仓规范）
 
-- 从最新 `dev` 拉分支：`fix/<issue>-<名>` / `feat/<issue>-<名>` / `docs/<名>` / `chore/<名>`；**不要** `dev/` 开头。PR 进 `dev` 不进 `main`（仅 release/hotfix 进 main）。
-- 同步上游用 `scripts/merge-dev.sh`（冲突的 `client.js` 取 dev 侧再重建）；**不 rebase 已推送分支、不 force-push**。
-- 提交信息英文、祈使句、正文写原因；作者是要改动的人，不加 AI Co-authored-by。用户可见文案用英文；改 README 时保持 README.zh.md 同步。行为变更先查 `docs/plans/` 的设计文档。
-- 不碰带 `maintainer` 标签的 issue；不接别人已认领的。
+- DS-Bot 没有自己的 git：改动在超仓 `ktons/dsh-im-bot` 提交并推送，提交信息沿用超仓现有风格（`feat:`/`fix:`/`chore:`/`docs:` + 中文摘要）。
+- 改了 `src/client/` 后重建的 `client.js` 必须与源码同一提交入库（超仓直接跟踪该文件）。
+- 沿用的代码库级约定：用户可见文案用英文；改 README 时保持 README.zh.md 同步；行为变更先查 `docs/plans/` 的设计文档。
+- 上游贡献规范（dev 分支、PR 流程、`scripts/merge-dev.sh` 同步、issue 认领）已随收编作废，仅当将来重新跟上游时再启用。
 
 ## 版本兼容与工作区现状
 
-- `ds-bot` 0.3.8 声明测试基线 **dsh 0.2.2-rc.1**；本工作区 dsh 钉在 **0.2.1-rc.5**（少 3434 提交）。**0.2.1-rc.5 已实测可用（2026-11-18 用户验证），勿主动建议重定基线**；仅真实 API 不兼容时才重定，见 skill **dsh-release-bump**。插件迭代规划见工作区 `docs/ds-bot-roadmap.md`。
-- `link/`（ds-bot-link 0.1.0）版本独立、落后主插件；`ds-bot/client.js` 已随 tag 提交、装进桌面端无需构建。
-- 升级 tag → skill **dsh-release-bump**；装进桌面端 → skill **dsh-plugin-install**；重建桌面端 → skill **dsh-desktop-release**。换版本/重打包后更新工作区 `AGENTS.md` 快照表。
+- `ds-bot` 0.3.10 声明测试基线 **dsh 0.2.2-rc.1**；工作区 dsh 钉在 **0.2.2-rc.5**，满足（2026-11-23 桌面端实测可用）。插件迭代规划见工作区 `docs/ds-bot-roadmap.md`。
+- `link/`（ds-bot-link 0.1.0）版本独立、落后主插件；`ds-bot/client.js` 随 v0.3.10 快照就位、装进桌面端无需构建。
+- dsh 升级 → skill **dsh-release-bump**（插件快照不跟上游）；装进桌面端 → skill **dsh-plugin-install**；重建桌面端 → skill **dsh-desktop-release**。换版本/重打包后更新工作区 `AGENTS.md` 快照表。
