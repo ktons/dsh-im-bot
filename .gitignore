@@ -4,9 +4,9 @@ bin/
 # 会话临时产物（截图、下载缓存等）
 .downloads/
 
-# 嵌套的独立 git 仓库（各自有自己的远程与分支管理，不入本仓）
-dsh/
-plugins/
+# dsh 为 git submodule（pin 在上游 release tag，见 .gitmodules）；
+# plugins/ 下两个插件已收编为本仓源码快照，不再整体 ignore。
+# bin/、.downloads/ 之外的杂项照旧 ignore。
 
 # 系统杂项
 Thumbs.db
