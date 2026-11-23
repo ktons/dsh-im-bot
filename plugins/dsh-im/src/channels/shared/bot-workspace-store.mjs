@@ -2021,13 +2021,26 @@ export function createBotWorkspaceScope(
           }
           assertCurrentBotScope(isCurrentScope);
           if (dsBinding(key)?.dsBotId !== binding.dsBotId) throw workspaceSessionStale('DS Bot binding changed');
-          if (state.sessionFor(key) !== bot.sessionId) await state.setSession(key, bot.sessionId);
+          if (state.sessionFor(key) !== bot.sessionId) {
+            console.info('[dsh-im] DS Bot rolled the conversation to a new part; following:', key, '→', bot.sessionId);
+            await state.setSession(key, bot.sessionId);
+          }
           sessionGenerations.set(bot.sessionId, {
             generation: workspaces.generationFor(botId),
             conversationKey: key,
             conversationGeneration: currentConversationGeneration(key),
           });
           return bot.sessionId;
+        };
+      }
+      if (property === 'resolveDsBotParts') {
+        // Read-only twin of resolveDsBotSession for deferred delivery: a poll
+        // must observe the binding without ever re-pointing it.
+        return async (key) => {
+          assertCurrentBotScope(isCurrentScope);
+          const binding = dsBinding(key);
+          if (!binding || !dsBot) return null;
+          return dsBot.resolve(binding.dsBotId).catch(() => null);
         };
       }
       if (property === 'agentPresetSettings') {

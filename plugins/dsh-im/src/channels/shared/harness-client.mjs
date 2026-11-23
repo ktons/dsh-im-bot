@@ -2314,6 +2314,18 @@ export class HarnessClient {
           error.promptAccepted = promptAccepted;
           error.details = { ...error.details, promptRpcId, baselineSeq, turn: tracker.turn, lastSeq: tracker.lastSeq };
         }
+        // A connection drop after the turn was accepted leaves the turn running
+        // server-side. Carry the prompt identity so deferred delivery can watch
+        // for the result even though this ask died; the ask site decides whether
+        // to register one.
+        if (promptAccepted && !ownership?.stopRequested
+            && (error?.name === 'AbortError'
+              || error?.code === 'harness-connect-failed'
+              || error?.code === 'harness-timeout')
+            && typeof promptRpcId === 'string') {
+          error.promptAccepted = true;
+          error.details = { ...error.details, promptRpcId, baselineSeq, turn: tracker.turn, lastSeq: tracker.lastSeq };
+        }
         if (error instanceof HarnessTurnError) {
           error.details ??= {
             sessionId, promptRpcId, baselineSeq, turn: tracker.turn, lastSeq: tracker.lastSeq,

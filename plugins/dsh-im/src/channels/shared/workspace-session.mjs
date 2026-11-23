@@ -221,10 +221,18 @@ export async function askInWorkspaceSession({
         diagnostic.submissionState = 'unknown';
         answer = await binding.session.ask(prompt, artifactOptions);
       } catch (error) {
-        if (error?.code === 'harness-reply-timeout' && deferredDelivery) {
+        // A timeout proves the turn was accepted; a connection-class failure
+        // only claims acceptance through error.promptAccepted (set by the
+        // harness client when the prompt went through before the link died).
+        // Either way the turn may finish server-side, so watch for its result.
+        const acceptedTurn = error?.code === 'harness-reply-timeout'
+          || (error?.promptAccepted === true && typeof error?.details?.promptRpcId === 'string');
+        if (acceptedTurn && deferredDelivery) {
           try {
             const { coordinator, ...destination } = deferredDelivery();
-            await coordinator.trackTimeout(error, { ...destination, key, sessionId: binding.sessionId });
+            const unconfirmed = error?.code !== 'harness-reply-timeout';
+            await coordinator.trackTimeout(error, { ...destination, key, sessionId: binding.sessionId, unconfirmed });
+            if (unconfirmed) console.warn('[dsh-im] connection dropped mid-turn; the result will be delivered when the turn finishes');
           } catch (registrationError) {
             console.warn('[dsh-im] unable to persist deferred delivery:', registrationError.message);
           }

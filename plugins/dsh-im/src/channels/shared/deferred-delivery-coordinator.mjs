@@ -42,7 +42,24 @@ export function createDeferredDeliveryCoordinator({
   }, { logger });
   const warn = (error) => { if (!activeSignal.aborted) logger.warn?.('[dsh-im] deferred delivery:', error?.message ?? String(error)); };
   const pending = async (id) => (await registry.allPending()).find((entry) => entry.id === id);
-  const bound = (entry) => !activeSignal.aborted && state.sessionFor(entry.key) === entry.sessionId;
+  const UNCONFIRMED_TTL_MS = 30 * 60_000;
+  const bound = async (entry) => {
+    if (activeSignal.aborted) return false;
+    if (state.sessionFor(entry.key) === entry.sessionId) return true;
+    // A ds-bot binding rolls its conversation through parts: the entry still
+    // belongs to the conversation while its session id remains one of the
+    // bot's known parts (resolveDsBotParts is read-only).
+    if (typeof harness.resolveDsBotParts !== 'function') return false;
+    try {
+      const bot = await harness.resolveDsBotParts(entry.key);
+      const rolled = Array.isArray(bot?.parts) && bot.parts.includes(entry.sessionId);
+      if (rolled) logger.info?.('[dsh-im] deferred delivery: keeping the entry across a DS Bot part roll:', entry.key);
+      return rolled;
+    } catch (error) {
+      logger.warn?.('[dsh-im] deferred delivery: DS Bot part check failed:', error?.message ?? String(error));
+      return false;
+    }
+  };
   function enqueue(sessionId, operation) {
     const previous = tails.get(sessionId) ?? Promise.resolve();
     const task = previous.then(() => activeSignal.aborted ? undefined : operation());
@@ -120,14 +137,27 @@ export function createDeferredDeliveryCoordinator({
     let entry = await pending(id);
     if (!entry || activeSignal.aborted) return 'none';
     clearTimer(id);
-    if (!bound(entry)) { await remove(entry); return 'none'; }
+    if (!(await bound(entry))) {
+      logger.info?.('[dsh-im] deferred delivery: dropping an unbound entry:', entry.key, entry.sessionId);
+      await remove(entry);
+      return 'none';
+    }
+    if (entry.unconfirmed && Date.now() - (entry.unconfirmedAt ?? 0) > UNCONFIRMED_TTL_MS) {
+      logger.info?.('[dsh-im] deferred delivery: giving up on an unconfirmed turn:', entry.key, entry.sessionId);
+      await remove(entry);
+      return 'none';
+    }
     let sending = false;
     try {
       const outcome = await readOutcome(entry);
       // Binding, status and cancellation can change while the RPC is in flight.
       entry = await pending(id);
       if (!entry || activeSignal.aborted) return 'none';
-      if (!bound(entry)) { await remove(entry); return 'none'; }
+      if (!(await bound(entry))) {
+        logger.info?.('[dsh-im] deferred delivery: dropping an unbound entry:', entry.key, entry.sessionId);
+        await remove(entry);
+        return 'none';
+      }
       if (outcome.endSeq === -1) {
         if (Number.isSafeInteger(outcome.turn) && entry.turn !== outcome.turn) {
           await state.patchDeferred(id, { turn: outcome.turn });
@@ -137,11 +167,11 @@ export function createDeferredDeliveryCoordinator({
           const session = harness.workspaceSession?.(entry.sessionId, entry.key);
           const stopped = typeof session?.stopDeferredTurn === 'function'
             ? await session.stopDeferredTurn({ turn: entry.turn, promptRpcId: entry.promptRpcId }, {
-                signal: activeSignal, isCurrent: () => bound(entry),
+                signal: activeSignal, isCurrent: () => state.sessionFor(entry.key) === entry.sessionId,
               })
             : typeof harness.stopDeferredTurn === 'function'
               ? await harness.stopDeferredTurn(entry.sessionId, { turn: entry.turn, promptRpcId: entry.promptRpcId }, {
-                  signal: activeSignal, isCurrent: () => bound(entry),
+                  signal: activeSignal, isCurrent: () => state.sessionFor(entry.key) === entry.sessionId,
                 }) : false;
           schedule(entry, retryDelayMs);
           return stopped ? 'stopped' : 'unavailable';
@@ -156,6 +186,7 @@ export function createDeferredDeliveryCoordinator({
           deliveryOutcome: result?.deliveryOutcome ?? 'failed',
         });
       }
+      logger.info?.('[dsh-im] deferred delivery: result delivered for', entry.key);
       await remove(entry);
       return 'delivered';
     } catch (error) {
@@ -206,16 +237,22 @@ export function createDeferredDeliveryCoordinator({
     timers.clear();
   }, { once: true });
   const api = {
-    async trackTimeout(error, { key, sessionId, ...delivery }) {
-      if (!enabled || error?.code !== 'harness-reply-timeout' || activeSignal.aborted) return;
+    async trackTimeout(error, { key, sessionId, unconfirmed = false, ...delivery }) {
+      if (!enabled || activeSignal.aborted) return;
+      // A timeout proves the turn was accepted; a connection-class failure only
+      // claims acceptance through error.promptAccepted (the caller passes
+      // unconfirmed for those, so a dropped link still leads to a delivery).
+      if (error?.code !== 'harness-reply-timeout' && unconfirmed !== true) return;
       const details = error.details ?? {};
       const target = details.sessionId ?? sessionId ?? state.sessionFor(key);
       if (!target || state.sessionFor(key) !== target) return;
       const entry = await registry.register({ key, sessionId: target,
         turn: details.turn, promptRpcId: details.promptRpcId,
         afterSeq: details.baselineSeq ?? details.lastSeq ?? -1,
+        ...(unconfirmed ? { unconfirmed: true, unconfirmedAt: Date.now() } : {}),
         ...delivery,
       });
+      logger.info?.('[dsh-im] deferred delivery: watching for a late result:', key, entry.sessionId, unconfirmed ? '(unconfirmed)' : '(timeout)');
       void enqueue(target, () => process(entry.id)).catch(warn);
     },
     async onEvent({ sessionId, event } = {}) {

@@ -3,7 +3,7 @@
 > 状态：**执行中**（2026-11-23 用户拍板开工：渠道收窄为**飞书+lark**，P0~P3 本期执行）
 > 详细设计稿：[ds-bot-dsh-im-qq-feishu.md](./ds-bot-dsh-im-qq-feishu.md)（2026-11-15）。QQ 部分已裁剪；**dsh-im 未变（v5.10.0）其侧 file:line 仍有效**；ds-bot 侧以 v0.3.10 快照复核为准（2026-11-23 已复核，见 R1 各表）。
 > 基线（2026-11-23 实测）：dsh submodule `dsh-v0.2.2-rc.5`（桌面端 bin 已重建同版，exe FileVersion 0.2.2-rc.5）；DS-Bot **v0.3.10 源码快照**；dsh-im **v5.10.0 源码快照**。
-> 迭代约定变化（2026-11-23）：两插件已收编为源码快照（**无 .git**），上游 fork 的 dev 分支 PR 规范不再适用；改动直接进**工作区仓**，稳定即 commit、**禁止 push**；快照删除/大改前先在工作区仓提交基线。
+> 迭代约定变化（2026-11-23）：两插件已收编为源码快照（**无 .git**），上游 fork 的 dev 分支 PR 规范不再适用；改动直接进**工作区仓**，稳定即 commit 并 push 至 `ktons/dsh-im-bot`；快照删除/大改前先在工作区仓提交基线。
 > 本文件维护当前迭代的任务状态、决策点与执行记录；状态枚举：pending / in-progress / done / 无法验证（依赖用户飞书/lark 租户侧操作的标注"用户验证"）。
 > 执行约定（2026-11-23 用户要求）：**关键路径打 log**——桥接/绑定/滚动跟随/问题同步/补发登记与投递等关键点留日志，供用户体验后反馈排障。
 
@@ -18,7 +18,7 @@
 | T3 | P1：ds-bot 去提问化（重做）——删 `ask_user` 注册、拒 `show_view` 交互视图、改写 prompt.js 三处 + 关键点 log | — | done | commit `49fb944`；源码 10 处 + 测试退役/注入改造 + 冒烟脚本适配，见执行记录 |
 | T4 | P2 前置：工作区仓提交**删除前基线**（含 ds-bot client.js 重建后的 P1 产物） | T3 | done | 基线 = `49fb944`（P1 全量提交，快照可回滚） |
 | T5 | P2：废除 ds-bot IM 层——`src/host/im/` 全目录、channel.js IM 端点、client im-page/IM 设置 UI、16+1 个 im 测试；保留 rooms/connectors/resume/delivery/mobile/phone/remote | T2 | pending | 等 T2 用户验证通过后执行 |
-| T6 | P3：dsh-im 补发修复——`bound()` 跟随 ds-bot part 滚动（R1）、断线失败也登记补发（R3）+ 桥路径关键 log | T1 | in-progress | 原为"观察后可选"，2026-11-23 用户指示并入本期 |
+| T6 | P3：dsh-im 补发修复——`bound()` 跟随 ds-bot part 滚动（R1）、断线失败也登记补发（R3）+ 桥路径关键 log | T1 | done | 五文件改动+重建 lib；相关测试全绿，cancelled 类挂点 stash 对照确认为既有环境问题，见执行记录 |
 | T7 | 桌面端刷新：ds-bot（link 安装，重建 client.js 即生效）+ dsh-im（T6 后重建/重装） | T3, T5, T6 | pending | P1 未动 client.js，重启即生效 |
 | T8 | 收口：AGENTS.md 快照表刷新、roadmap 执行记录与状态更新、工作区仓提交 | T1~T7 | pending | AGENTS.md 快照表已由 2026-11-23 重构会话更新，无需再动 |
 
@@ -110,3 +110,4 @@ v0.3.10 快照已核实 `ask_user`/`show_view`/prompt 三处俱全（旧 fork �
 | 2026-11-24 | T1 桌面端安装 dsh-im | 1 | done（激活待重启确认） | 手工接线后 junction 解析正确 | CLI 拒管 desktop（"managed exclusively by the Electron application"）；npm ci + pnpm install |
 | 2026-11-24 | ds-bot 异常修复 | 1 | done | node_modules 70 项在位 | v0.3.10 快照缺依赖，npm ci 即愈 |
 | 2026-11-24 | T3 P1 去提问化 | 3 | done | `npm test` 3795 过/8 挂（3 环境性+5 既有负载 flake）；`--check`/lint 绿；冒烟 49/55 | 测试退役改造：im.test.js 删交互 E2E 两块（-1157 行）、legacy 用例改 state 直注入、view-reply/rounds/im-telegram 同法；冒烟 6 挂为本工作区 v0.3.10×rc.5 既有分段校准问题（原版 prompt.js 对照复现，非 P1 回归）；bench 坏链按 skill 修 junction |
+| 2026-11-24 | T6 P3 dsh-im 补发修复+桥 log | 1 | done | 补发三件套+ds-bot-handoff 42 过/0 挂；harness-client 三通道单跑 feishu 37/dingtalk 19 全过；`verify-package.mjs` 过 | 五文件：coordinator `bound()` 改异步跟随 ds-bot part 滚动（`resolveDsBotParts` 只读）、unconfirmed 补发 30min TTL、`trackTimeout` 收 `unconfirmed` 参数；harness-client 断线类失败（AbortError/connect-failed/timeout）在 `promptAccepted` 且未 stop 时补 `promptRpcId` 身份；workspace-session 宽化 `acceptedTurn` 判定并登记 `unconfirmed`；bot-workspace-store 新增只读 `resolveDsBotParts`；delivery-adapter 绑定/解绑 log。weixin/discord/device-auth 的 cancelled 挂点 stash 对照基线复现一致（"event loop drained" 环境问题，非 P3 回归）；`lib/client.js` 的 diff 为 CRLF 噪音，重建后与 HEAD 一致 |

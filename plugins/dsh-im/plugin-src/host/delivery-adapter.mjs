@@ -507,6 +507,7 @@ export function createDeliveryAdapter({
         const bot = await dsBot.resolve(dsBotId);
         const previousSession = state.sessionFor(conversationKey);
         await state.setSession(conversationKey, bot.sessionId);
+        console.info('[dsh-im] DS Bot bound:', botId, conversationKey, '→ bot', dsBotId, '(session', bot.sessionId + ')');
         try {
           return await workspaces.setDsBotBinding(botId, conversationKey, dsBotId);
         } catch (error) {
@@ -522,6 +523,7 @@ export function createDeliveryAdapter({
         if (!workspaces.dsBotBindingFor(botId, conversationKey)) return false;
         await state.clearSession(conversationKey);
         await workspaces.setDsBotBinding(botId, conversationKey, null);
+        console.info('[dsh-im] DS Bot unbound:', botId, conversationKey);
         return true;
       });
     },
