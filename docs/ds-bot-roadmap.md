@@ -1,160 +1,109 @@
-# ds-bot 迭代 Roadmap：IM 换血 · standard 模板 · lane 协议 · 工作区面板 · 原生卡片
+# ds-bot 迭代 Roadmap：IM 换血（飞书+lark） · standard 模板 · lane 协议 · 工作区面板 · 原生卡片
 
-> 状态：roadmap（2026-11-18）· 基线：DS-Bot stable @ v0.3.8（`5e9b7da8`）、dsh-im detached @ v5.10.0（`c826bfa4`）、dsh stable @ `dsh-v0.2.1-rc.5`
-> R1 的详细设计稿：[ds-bot-dsh-im-qq-feishu.md](./ds-bot-dsh-im-qq-feishu.md)（基于 ds-bot 0.3.6 调研，落地前在 0.3.8 复核 file:line）
-> 本文 `file:line` 均为当前检出的实证位置；ds-bot 路径相对 `plugins/DS-Bot/ds-bot/`，dsh 路径相对 `dsh/`。
-
-## 0. 六条线与需求对照
-
-| 线 | 内容 | 对应需求 | 性质 |
-|---|---|---|---|
-| R0 | 基线对齐——**已裁决不做**（0.2.1-rc.5 实测可用） | 已关闭 | — |
-| R1 | IM 换血：dsh-im 桥接接管 QQ/飞书，废除 ds-bot 自带 IM 层 | 需求 1 | ds-bot + dsh-im |
-| R2 | 新增 standard 模板 Bot（无 message_bot/协作提示词） | 需求 2 | ds-bot |
-| R3 | lane 通信协议（lane = 普通 dsh 会话，standard Bot 派活/收反馈） | 需求 3 | ds-bot |
-| R4 | 面板扩展：原始工作区模式（每工作区一块会话板，lane 上板） | 需求 4 | ds-bot |
-| R5 | 撤掉会话替身，回归 dsh 原生会话卡片（思考/工具调用/详情可调） | 需求 5 | ds-bot |
-
-**依赖链**：R1a（配置桥）→ R2 → R3 → R4；R1b（废除代码）在 R1a 验证通过后执行；R5 与 R2/R4 并行分步（standard Bot 先行），team Bot 撤皮收尾；R1c（dsh-im 补发修复）视 R1a 后观察决定。R0 已裁决不做（见决策记录）。
+> 状态：**执行中**（2026-11-23 用户拍板开工：渠道收窄为**飞书+lark**，P0~P3 本期执行）
+> 详细设计稿：[ds-bot-dsh-im-qq-feishu.md](./ds-bot-dsh-im-qq-feishu.md)（2026-11-15）。QQ 部分已裁剪；**dsh-im 未变（v5.10.0）其侧 file:line 仍有效**；ds-bot 侧以 v0.3.10 快照复核为准（2026-11-23 已复核，见 R1 各表）。
+> 基线（2026-11-23 实测）：dsh submodule `dsh-v0.2.2-rc.5`（桌面端 bin 已重建同版，exe FileVersion 0.2.2-rc.5）；DS-Bot **v0.3.10 源码快照**；dsh-im **v5.10.0 源码快照**。
+> 迭代约定变化（2026-11-23）：两插件已收编为源码快照（**无 .git**），上游 fork 的 dev 分支 PR 规范不再适用；改动直接进**工作区仓**，稳定即 commit、**禁止 push**；快照删除/大改前先在工作区仓提交基线。
+> 本文件维护当前迭代的任务状态、决策点与执行记录；状态枚举：pending / in-progress / done / 无法验证（依赖用户飞书/lark 租户侧操作的标注"用户验证"）。
+> 执行约定（2026-11-23 用户要求）：**关键路径打 log**——桥接/绑定/滚动跟随/问题同步/补发登记与投递等关键点留日志，供用户体验后反馈排障。
 
 ---
 
-## R0 基线——已裁决：不重定（2026-11-18）
+## 一、任务总表（当前迭代：R1 IM 换血 · 飞书+lark）
 
-- **dsh 0.2.1-rc.5 已实测可用（用户验证），基线不动，此后勿再提议重定**。本事实已同步记入工作区 AGENTS.md 与 skill ds-bot-dev；R3–R5 依赖的 `sessionController` / `workspaceController` / `sidebarRightTabs` / slots API 均已在该基线上实证存在（见各线 file:line）。
-- 仅当真实出现 API 不兼容报错时才按 skill **dsh-release-bump** 重定到 `dsh-v0.2.2-rc.1`；`stash@{0}` 维持现状（弹取条件不变）。
-- dsh-im 现为 detached @ v5.10.0：R1c 动代码前建 `stable` 分支，让改动有基线可归。
+| ID | 任务一句话 | 依赖 | 状态 | 备注 |
+|---|---|---|---|---|
+| T1 | P0a：dsh-im 装进桌面端 profile，在 dsh 0.2.2-rc.5 上验证激活（GUI 设置页可开、14 渠道挂载无误） | — | pending | 首次在 0.2.2-rc.5 上实测 dsh-im |
+| T2 | P0b：飞书 bot + lark bot 配置（扫码或 AppID+Secret+domain）、清空 ds-bot 侧飞书连接、私聊 bindDsBot、开 `deliverModelAnswers`、按验收清单走查 | T1, T3 | **用户验证** | 租户凭据/扫码只能用户做；操作清单随 T1 交付 |
+| T3 | P1：ds-bot 去提问化（重做）——删 `ask_user` 注册、拒 `show_view` 交互视图、改写 prompt.js 三处 + 关键点 log | — | pending | `feat/standard-template`（旧 fork 分支）的拆除工作未进 v0.3.10 快照，需重做；tools.js:908/971、prompt.js 3 处均在 |
+| T4 | P2 前置：工作区仓提交**删除前基线**（含 ds-bot client.js 重建后的 P1 产物） | T3 | pending | 快照无 .git，删除只能靠工作区仓历史回滚 |
+| T5 | P2：废除 ds-bot IM 层——`src/host/im/` 全目录、channel.js IM 端点、client im-page/IM 设置 UI、16+1 个 im 测试；保留 rooms/connectors/resume/delivery/mobile/phone/remote | T2 | pending | T2 验证通过再删（先并行、后删除）；T3 可先行 |
+| T6 | P3：dsh-im 补发修复——`bound()` 跟随 ds-bot part 滚动（R1）、断线失败也登记补发（R3）+ 桥路径关键 log | T1 | pending | 原为"观察后可选"，2026-11-23 用户指示并入本期 |
+| T7 | 桌面端刷新：ds-bot（link 安装，重建 client.js 即生效）+ dsh-im（T6 后重建/重装） | T3, T5, T6 | pending | |
+| T8 | 收口：AGENTS.md 快照表刷新、roadmap 执行记录与状态更新、工作区仓提交 | T1~T7 | pending | |
 
-## R1 IM 换血（需求 1）
-
-目标：QQ/飞书的连接、消息格式、送达质量全权交给 dsh-im，ds-bot 只出 Bot 能力（长活会话/记忆/协作）；ds-bot 自带 IM 平台层**代码废除**（设计稿原本只到配置层桥接，废除代码是本 roadmap 新增范围）。
-
-### R1a 桥接验证（0 行代码，设计稿 §4.2 Phase 0）
-
-两插件同 Host、ds-bot 侧 QQ/飞书连接清空、dsh-im 配置 QQ bot + 飞书 bot、私聊绑定 `bindDsBot`、开 `deliverModelAnswers`。验证清单见设计稿 §8。
-
-### R1b 废除 ds-bot IM 层（改 ds-bot，M1 后执行）
-
-| 面 | 内容 |
-|---|---|
-| 废除 | host：`src/host/im/`（`index.js` 文本中继"在线才发"、`platforms/qq.js` 被动窗口、`platforms/feishu.js` 纯文本卡）及 `channel.js` 中 IM 连接管理端点；client：`im-page.js` 与连接相关设置 UI |
-| 保留 | 群聊 rooms（Bot↔Bot 群协作，与 IM 平台层无关）；`connectors/`（mail 等，非 IM）；`resume.js` 补发记账（会话层双保险） |
-| 前置 | **R1a 验证通过后再删**（先并行、后删除） |
-| 不可逆面 | dsh-im 未覆盖的渠道（TG/微信等）随删除消失——已确认只需飞书+QQ 即可执行 |
-
-验收：设计稿 §8 清单 + 删除后 `npm test` / `lint` / `--check` + 冒烟全绿；设置页无 ds-bot IM 入口；绑定、滚动跟随、模型变更 bot 级生效均正常。
-
-### R1c dsh-im 后台任务补发修复（改 dsh-im，可选、观察后）
-
-原设计稿 Phase 2：`bound()` 跟随 ds-bot part 滚动（R1）、断线失败也登记补发（R3）。R2 配置开关（`deliverModelAnswers`）已在 R1a 解决大半，观察一周再决定是否动代码。
-
-## R2 新增 standard 模板 Bot（需求 2）
-
-**现状**：Bot 记录无类型字段（`roster.js:211-226` buildBot 字段表），类型是结构性的——Main Bot 走 `state.mainBotIds`、本地 CLI 走 `model` 的 `local-` 前缀、DSH Agent 是独立的 `state.agents`。"bot-message 语义"（代码中即 `message_bot` 协作体系）全部来自注入物：
-
-- `promptFor` 给**所有** Bot 拼 MAIN_RULES（仅 Main）+ TEAM_RULES（全员协作规则）：`prompt.js:49-55`；
-- TEAM_TOOLS 给所有 Bot 会话注册 `message_bot` / `list_bots` / `reply` / `update_bot` / `stop_bot` 等协作工具，工具 description 本身带协作语义：`constants.js:74-81` + `tools.js:929-966`。
-
-新增 `template` 字段区分（`'team'` 默认 | `'standard'`），standard = 干净模板（仅身份 + instructions，无协作规则、无协作工具）：
-
-| 改动点 | 位置 | 内容 |
-|---|---|---|
-| 存储字段 | `roster.js:211-226` buildBot | 加 `template`；存量 Bot 迁移默认 `'team'`，零行为变化 |
-| 创建链路 | `client/bot-draft.js:21-30` → `channel.js:392` → roster | payload 透传；`create-bot.js` 表单加模板选择（团队 Bot / Standard） |
-| 提示词分支 | `prompt.js:49-55` promptFor | standard：仅 `# Your identity`（name/role/instructions），不拼 MAIN_RULES/TEAM_RULES |
-| 工具 scope | `tools.js:956-966` syncScopedTools + `constants.js` TEAM_TOOLS | standard 会话不注册协作工具——不注册即干净 |
-| 引用文案 | `tools.js:39` DELEGATION_REFUSAL、`memory.js:417-419`、`memory-copy.js:19,28`、`roster.js:233-243` kickoff OWN_RULES | standard 分支换无协作措辞 |
-| 客户端 | `cells.js` / `mark.js` 仅展示层 | 可不改 |
-
-**决策（已定，2026-11-18）：ask_user 全局拆**——按原设计稿 Phase 1 全量执行（删 `ask_user` 工具注册、禁 `show_view` 交互视图、改写 prompt 三处，§4.3），team 与 standard 一律拆（ask_user 判定没用）。桥上的问题卡同步（`ds-bot-question-sync.mjs`）与 QQ"去桌面端回答"降级文本随之自然消失。
-
-验收：创建 Standard Bot → 其会话 system prompt 无 MAIN_RULES/TEAM_RULES、无协作工具；既有 team Bot 零变化；构建检查全套绿。
-
-> **进度（2026-11-18）**：已落地于 DS-Bot 分支 `feat/standard-template`（`ab6b2689`）——template 字段/创建链路/提示词分支/工具 scope/文案分支/i18n（7 语言）/create 表单选择，连同裁决的 ask_user 全局退役（含交互视图拒绝）；设计文档在 DS-Bot `docs/plans/2026-11-18-standard-template.md`。`npm test` 2887 过（3 个失败均为本工作区环境性：link/ 缺依赖 ×2、Windows symlink EPERM ×1）、lint/--check 绿、冒烟 51 步全绿（`dev/bench.sh`+mock）。**尚未装进桌面端**；push/PR 待定。
-
-## R3 lane 通信协议（需求 3）
-
-**定义**：lane = 一个**普通 dsh 会话**（header.origin 未设置，`packages/core/session/src/types.ts:95-124`），挂在工作区账目下，由 standard Bot 派活与收反馈。派活 = 向该会话 prompt；反馈 = ds-bot host 监听 lane 会话事件提取结果并回投 Bot 会话。
-
-dsh 侧 API 全部已实证可用（先例：ds-bot `agents.js:40` 建普通会话、dsh-im `harness-client.mjs` 全套 session rpc）：
-
-| 能力 | API | 位置 |
-|---|---|---|
-| 建 lane | `sessionController.create({workspaceId})`，可指定 sessionId、可带 agentPreset | `packages/api/session-controller/src/index.ts:300`、`commands.ts:111-150`、types `:288-297` |
-| 派活 | `sessionController.prompt({sessionId, mode:'queue', content})` | `index.ts:461-486` |
-| 收反馈（推） | `ctx.on('session/event', …, {global:true})` 监听 `turn/end` | `known-event-types.ts:79-80`；dsh-im 先例 `modern-harness-api.mjs:279-284` |
-| 收反馈（拉） | `sessionController.page` / `follow` 流 | `index.ts:524` / `:536` |
-| 工作区归属 | `workspace.attachSession`（registry 账目 `sessionIds`） | `packages/workspace/workspace/src/index.ts:669-712` |
-
-ds-bot 侧新增（host `lanes.js` + 工具）：
-
-1. **lane 注册表**：`{sessionId, workspaceId, title, status, botId, taskId, createdAt}` 落 Bot 状态文件；
-2. **任务信封协议**：prompt content 用约定信封（目标 / 上下文 / 产出要求 / 回报格式）。lane 侧零依赖——普通会话直接读题干活，不需要装任何插件；回报 = lane 最终回合文本按信封约定结构化（如首行 `LANE-RESULT:` 头 + markdown 正文；定稿放在实现设计文档）；
-3. **反馈回投**：`turn/end` → 提取最终文本 → 注入所属 Bot 当前 part；Bot 端工具 `lane_send` / `lane_status` / `lane_read` / `lane_cancel`；
-4. **归属保护**：lane session 登记进 `indexSessions`（`store.js:533-578`），避免被 `adoptAgentSession` 收编（`agents.js:49-59` 的 owned 检查）；lane 是普通会话、无 parts 分段机制，与 Bot 会话滚动天然隔离。
-
-**决策（已定，2026-11-18）：lane 跟随 agentPreset**——创建 lane 时当前预设是什么就带什么，不做 lane 专属限权设计；lane 内危险操作照常走 dsh approvals。
-
-验收：standard Bot 在会话里 `lane_send` 派活 → lane 会话独立跑完 → 结果文本回投 Bot 会话；`/api/bot` 路由可查 lane 列表（`channel.js:947-957` 路由机制现成）。
-
-## R4 面板：原始工作区模式（需求 4）
-
-**现状**：右栏 `BotPanel`（`browser-pane.js:523`，三视图 DetailsDrawer/BrowserView/SideChatView `:734-743`）只服务 Bot；"DSH Agent 区域"= plain 模式下撤掉会话替身后的原生主视图（`surface.js:7-9` groupsFor + `index.js:1320-1331`），一次只能看一个。
-
-新增**工作区板**视图：
-
-- **tab 注册**：`ctx.sidebarRightTabs.register` + slot `sidebar.right.pane.tab`（`packages/client/ui-sidebar-right/README.md:79-88`）；ds-bot 已有 `sidebarRight` 消费先例（changes-review 详情面板）。
-- **数据源**：`workspaceController.follow` 流（`packages/api/workspace-controller/src/index.ts:205-232`，baseline+增量含每 workspace 的 `sessionIds`）→ 经 host lane 注册表映射出 lane → 按**工作区分组**的会话板（每板列出 lane 卡：标题/状态/最后活动/所属 Bot）。
-- **交互**：板内"新建 lane"（调 host lane 端点）；点 lane → 主区以 plain 模式打开该 lane 的原生会话（即 R5 机制）。
-- 侧栏 AgentRow（`sidebar.js:206-267`）保留不动。
-
-验收：右栏出现工作区板 tab；standard Bot 派活的 lane 实时上板；点开 lane 看到原生 dsh 会话全细节。
-
-## R5 回归 dsh 原生会话卡片（需求 5）
-
-**现状（"掩盖细节"的机制清单，全部是 slots 替身，优先级 -100 压过原生）**：
-
-| 替身 | 效果 | 位置 |
-|---|---|---|
-| assistant-step → AssistantCell | 正文过滤 tool-call 标签；思考仅 `prefs.thinking` 才渲染且走自研聚合 | `index.js:1245-1250`、`cells.js:264-320`、`turn-reasoning.js:1-8` |
-| tool-call → ToolCell | 只画 DRAWN 白名单工具，普通工具卡（shell/read/write…）**完全不显示**，运行中化为一句 activity | `cells.js:1124`、`:1242-1265` |
-| compaction / context → CellEmpty | dsh 压缩卡与 context 行被清空 | `index.js:1264-1270` |
-| composer 各 dock → Nothing | 权限/计划/模型/活动/用量 dock 全隐藏 | `index.js:1282-1288` |
-| user / steering → UserMessageCell、turnTail | 替换原卡、隐藏 copy/branch 行 | `index.js:1271-1278`、`:1254-1256` |
-
-**原生回归机制现成**：`groupsFor` 返回 `conversation:false` 即全部撤下还原（plain 模式已验证，`surface.js:5-9`）。原生侧即刻获得：ReasoningRow 思考折叠卡（`ui-chat/src/client/chat/ReasoningRow.tsx:44`）、ToolCallTree 工具树 + 各工具 toolview（`ui-tool/src/client/apply.ts:38-47`）、卡片内 DisclosureRow 详情展开与右栏 dock 详情面板（`ui-sidebar-right/README.md:79-88`）。
-
-**分步**：
-
-1. standard Bot 先行（R2 交付即原生渲染，无历史包袱）；
-2. lane 会话原生（R4 点开即 plain，天然原生）;
-3. team Bot 撤皮收尾：逐替身盘点去留——真有价值的（BotMention @高亮、user-text 规则、Bot 身份徽标）以原生之上的轻量注入重建（独立 slot 或 user 卡附加徽标），纯掩盖的（DRAWN 白名单、dock 清空、压缩卡清空）直接撤；ask_user/show_view 卡相关替身随全局拆除一并删除；
-4. 验收：Bot 会话可见思考卡、工具调用树、可展开详情、右栏 dock 详情面板可用；"哪个 Bot 在说"在原生渲染下仍有标记；压缩/context 卡恢复显示；回滚 = 还原 index.js 安装清单提交。
+**后续线（本期不动）**：R2 standard 模板（重建，见 §三）、R3 lane 协议、R4 工作区面板、R5 原生卡片回归——内容见下文，依赖链 R1a→R2→R3→R4、R5 并行分步不变。
 
 ---
 
-## 里程碑
+## 二、R1 IM 换血：实现面（2026-11-23 复核，v0.3.10 快照实证）
 
-| 里程碑 | 内容 | 前置 |
+架构（不变，唯一干净路径）：**dsh-im 当门面**（连接/渲染/送达），ds-bot Bot 会话作绑定目标（`bindDsBot`），ds-bot 自带 IM 平台层废除。两插件不能同连一个飞书应用（WS 事件互抢）。
+
+桥的现成件（dsh-im v5.10.0，全部已核对存在）：
+- 绑定：仅私聊、一对一（`plugin-src/host/delivery-adapter.mjs` `bindDsBot`），滚动跟随三件套（预解析轮询/回合中 `waitForTransferredReply`/`describeViaDsBot` 兜底）；
+- 入站：`src/channels/shared/workspace-session.mjs` `resolveDsBotSession` → 注入 Bot 当前 part；
+- 出站：IM 轮次走飞书流式卡管线；web/定时/后台轮次走 `plugin-src/host/session-sync-coordinator.mjs`（`deliverModelAnswers`/`mirrorUserInput` 开关，默认关）；
+- 问题卡：`plugin-src/host/ds-bot-question-sync.mjs`（ask_user 卡→飞书交互卡→回答回注）；P3/T3 落地后此路径自然消退。
+
+lark = 同通道 `domain:'feishu'|'lark'` 维度（`plugin-config-store.mjs:58`、`feishu-app.mjs:1-4`、扫码按 `tenant_brand` 自识别 `multi-bot-controller.mjs:1355`），**零代码差异**；"飞书+lark"= 一通道两 bot。
+
+### 能力对照（换血理由，v0.3.10 vs dsh-im 飞书）
+
+| 能力 | ds-bot 飞书（现状） | dsh-im 飞书 |
 |---|---|---|
-| M1 | 桥接验证通过，QQ/飞书经 dsh-im 到达 ds-bot Bot（R1a） | — |
-| M2 | standard 模板 Bot 可创建、可用（R2） | — |
-| M3 | lane 协议闭环：派活 → 干活 → 反馈回 Bot（R3） | M2 |
-| M4 | 工作区板上板（R4） | M3 |
-| M5 | ds-bot IM 层代码废除（R1b） | M1 |
-| M6 | team Bot 原生卡片回归完成（R5 收尾） | M2（分步进行） |
-| M7 | dsh-im 补发修复（R1c，视 M1 后观察） | M1 |
+| 过程展示 | 无流式，整段后发（text 4000 分片） | CardKit 流式卡 28000 + 原生实时直播 CoT + 过程卡 |
+| 附件 | 出站仅图片 | 图片+文件 30MB+语音 TTS；入站+引用回读/富文本图/转发卡/语音转写 |
+| 交互 | 4 类交互卡 | 全套管理卡+原生斜杠命令面板 |
+| 送达 | origin 仅内存重启即失 | deferred 补发、状态持久化、断线 resume |
 
-## 决策记录（2026-11-18）
+断链根因（在线才发/origin 不跨重启/卡片记账不补发）全在被废除的 ds-bot IM 层。
 
-| 决策点 | 裁决 |
-|---|---|
-| dsh 基线（原 R0） | **不重定**。0.2.1-rc.5 实测可用，勿再提议；仅真实 API 不兼容时才重定（已同步 AGENTS.md / skill ds-bot-dev） |
-| ask_user 去留（R2） | **全局拆**。按设计稿 Phase 1 全量执行，team/standard 一律无 ask_user（判定没用）；桥上问题卡同步随之消失 |
-| lane 权限（R3） | **跟随 agentPreset**。当前预设是什么就带什么，不做 lane 专属限权；危险操作照常走 approvals |
+### P0 验收清单（QQ 项已裁剪）
 
-## 风险
+- [ ] 飞书私聊 → ds-bot Bot 按人设/记忆回答，流式卡/过程卡按所选模式
+- [ ] lark 私聊 → 同上（国际版租户）
+- [ ] 图片/文件双向：私聊发图/文件进会话；Bot 产出图片/文件回传 IM（≤30MB）
+- [ ] `/new` 报 `ds-bot-bound`；模型变更 bot 级生效；ds-bot 桌面端 chat 与 IM 私聊同会话并行、历史一致
+- [ ] 后台/定时任务结果经 `deliverModelAnswers` 送达 IM（P3 前先验证现状，作为 T6 对照）
+- [ ] 群聊 @bot / 话题内 → dsh-im 本地会话（无 ds-bot 能力，预期行为）
 
-1. **替身功能回归**（R5）：@提及、身份徽标等真需求需以原生方式重建；逐替身盘点，勿一刀切。
-2. **废除不可逆面**（R1b）：dsh-im 未覆盖的渠道（TG 等）随删除消失；git 历史可回。
-3. **各线开工规范**：ds-bot 内遵循其 `dev` 分支 PR 规范（`feat/lane-*` 等）；每线落地时的详细实现设计文档放 DS-Bot 仓库 `docs/plans/`（上游惯例），本文件只维护路线与决策记录。
+### 硬边界（非 bug）
+
+1. 仅私聊绑定；群聊/话题是独立会话键，走本地会话。
+2. 一对一：飞书 bot、lark bot 各绑一个 ds-bot Bot；同 Bot 跨两渠道可并行，问题卡多候选降级文本（P1 后该路径基本消失）。
+3. 绑定后 `/new`、会话/工作区切换被拒；`/clear` 真清会话上下文。
+4. `deliverModelAnswers` 开启后 web 端同会话最终回复全镜像 IM。
+
+---
+
+## 三、后续线（基线备注：dsh 侧 file:line 为 0.2.1-rc.5 时代实证，现基线 0.2.2-rc.5，实施时复核）
+
+### R2 standard 模板 Bot（**重建**）
+
+v0.3.10 快照已核实 `ask_user`/`show_view`/prompt 三处俱全（旧 fork 分支 `feat/standard-template` `ab6b2689` 未进快照）。其中 **ask_user 全局拆由 T3（P1）先行重做**（决策不变：team/standard 一律拆）；模板机制本体（`template` 字段、promptFor 分支、TEAM_TOOLS scope、创建表单、i18n）**待重建**，改动点清单仍按原调研：`roster.js:211-226` buildBot、`prompt.js:49-55`、`tools.js:956-966`+`constants.js` TEAM_TOOLS、`client/bot-draft.js`/`create-bot.js`、文案五处（`tools.js:39`、`memory.js:417`、`memory-copy.js:19,28`、`roster.js:233-243`）。
+
+### R3 lane 协议 / R4 工作区面板 / R5 原生卡片
+
+方案不变，仍按原文（lane=普通 dsh 会话+信封协议+`turn/end` 回投；右栏 tab+`workspaceController.follow`；`groupsFor` 返回 `conversation:false` 撤替身、standard 先行）。实施时复核 dsh 0.2.2-rc.5 的 API 锚点。
+
+---
+
+## 四、决策点记录
+
+| ID | 问题 | 结论 |
+|---|---|---|
+| D1（2026-11-18） | dsh 基线是否重定至 0.2.2-rc.1 | ~~不重定~~ **已被超越**：2026-11-23 工作区重构，dsh submodule 升至 `dsh-v0.2.2-rc.5`、桌面端 bin 同版重建，兼容顾虑消失 |
+| D2（2026-11-18） | ask_user 去留 | 全局拆（team/standard 一律）；桥上问题卡同步随之消失 |
+| D3（2026-11-18） | lane 权限 | 跟随 agentPreset，危险操作走 approvals |
+| D4（2026-11-23） | R1 渠道范围 | **只接飞书+lark**（用户拍板）；QQ/TG/微信等 7 平台随 P2 删除，不可逆面按此收口 |
+| D5（2026-11-23） | P3 是否本期执行 | **并入本期**（用户指示开工 P0~P3），不再等一周观察 |
+| D6（2026-11-23） | 排障方式 | 关键路径打 log（绑定/滚动跟随/问题同步/补发），用户体验后按日志反馈修复 |
+
+---
+
+## 五、风险
+
+1. **P2 删除回滚**：插件无 .git，删除前必须 T4 基线提交；回滚=还原工作区仓提交。
+2. **dsh-im × dsh 0.2.2-rc.5 首跑**：T1 即首次实测；有 `modern-harness-api.mjs` 适配层，若 API 断裂按报错定位，必要时评估 dsh 侧对应面。
+3. **`deliverModelAnswers` 噪音**：web 端同会话最终回复全镜像 IM，按需开关。
+4. **R5 撤替身**：@提及/身份徽标等需以原生方式重建，逐替身盘点（后续线）。
+
+---
+
+## 六、执行记录
+
+> 每轮登记一行，最新在上；测试列填可直接复制的命令。
+
+| 日期 | 任务 | 轮次 | 结果 | 测试 | 备注 |
+|---|---|---|---|---|---|
