@@ -13,14 +13,14 @@
 
 | ID | 任务一句话 | 依赖 | 状态 | 备注 |
 |---|---|---|---|---|
-| T1 | P0a：dsh-im 装进桌面端 profile，在 dsh 0.2.2-rc.5 上验证激活（GUI 设置页可开、14 渠道挂载无误） | — | pending | 首次在 0.2.2-rc.5 上实测 dsh-im |
-| T2 | P0b：飞书 bot + lark bot 配置（扫码或 AppID+Secret+domain）、清空 ds-bot 侧飞书连接、私聊 bindDsBot、开 `deliverModelAnswers`、按验收清单走查 | T1, T3 | **用户验证** | 租户凭据/扫码只能用户做；操作清单随 T1 交付 |
-| T3 | P1：ds-bot 去提问化（重做）——删 `ask_user` 注册、拒 `show_view` 交互视图、改写 prompt.js 三处 + 关键点 log | — | pending | `feat/standard-template`（旧 fork 分支）的拆除工作未进 v0.3.10 快照，需重做；tools.js:908/971、prompt.js 3 处均在 |
-| T4 | P2 前置：工作区仓提交**删除前基线**（含 ds-bot client.js 重建后的 P1 产物） | T3 | pending | 快照无 .git，删除只能靠工作区仓历史回滚 |
-| T5 | P2：废除 ds-bot IM 层——`src/host/im/` 全目录、channel.js IM 端点、client im-page/IM 设置 UI、16+1 个 im 测试；保留 rooms/connectors/resume/delivery/mobile/phone/remote | T2 | pending | T2 验证通过再删（先并行、后删除）；T3 可先行 |
-| T6 | P3：dsh-im 补发修复——`bound()` 跟随 ds-bot part 滚动（R1）、断线失败也登记补发（R3）+ 桥路径关键 log | T1 | pending | 原为"观察后可选"，2026-11-23 用户指示并入本期 |
-| T7 | 桌面端刷新：ds-bot（link 安装，重建 client.js 即生效）+ dsh-im（T6 后重建/重装） | T3, T5, T6 | pending | |
-| T8 | 收口：AGENTS.md 快照表刷新、roadmap 执行记录与状态更新、工作区仓提交 | T1~T7 | pending | |
+| T1 | P0a：dsh-im 装进桌面端 profile，在 dsh 0.2.2-rc.5 上验证激活（GUI 设置页可开、14 渠道挂载无误） | — | done | CLI 拒管 desktop profile，改手工接线（package.json deps+bundles+pnpm junction，patch 随 bundle 层自动组合）；激活待用户重启确认 |
+| T2 | P0b：飞书 bot + lark bot 配置（扫码或 AppID+Secret+domain）、清空 ds-bot 侧飞书连接、私聊 bindDsBot、开 `deliverModelAnswers`、按验收清单走查 | T1, T3 | **用户验证** | 租户凭据/扫码只能用户做；操作清单已随 T1 交付（见会话） |
+| T3 | P1：ds-bot 去提问化（重做）——删 `ask_user` 注册、拒 `show_view` 交互视图、改写 prompt.js 三处 + 关键点 log | — | done | commit `49fb944`；源码 10 处 + 测试退役/注入改造 + 冒烟脚本适配，见执行记录 |
+| T4 | P2 前置：工作区仓提交**删除前基线**（含 ds-bot client.js 重建后的 P1 产物） | T3 | done | 基线 = `49fb944`（P1 全量提交，快照可回滚） |
+| T5 | P2：废除 ds-bot IM 层——`src/host/im/` 全目录、channel.js IM 端点、client im-page/IM 设置 UI、16+1 个 im 测试；保留 rooms/connectors/resume/delivery/mobile/phone/remote | T2 | pending | 等 T2 用户验证通过后执行 |
+| T6 | P3：dsh-im 补发修复——`bound()` 跟随 ds-bot part 滚动（R1）、断线失败也登记补发（R3）+ 桥路径关键 log | T1 | in-progress | 原为"观察后可选"，2026-11-23 用户指示并入本期 |
+| T7 | 桌面端刷新：ds-bot（link 安装，重建 client.js 即生效）+ dsh-im（T6 后重建/重装） | T3, T5, T6 | pending | P1 未动 client.js，重启即生效 |
+| T8 | 收口：AGENTS.md 快照表刷新、roadmap 执行记录与状态更新、工作区仓提交 | T1~T7 | pending | AGENTS.md 快照表已由 2026-11-23 重构会话更新，无需再动 |
 
 **后续线（本期不动）**：R2 standard 模板（重建，见 §三）、R3 lane 协议、R4 工作区面板、R5 原生卡片回归——内容见下文，依赖链 R1a→R2→R3→R4、R5 并行分步不变。
 
@@ -107,3 +107,6 @@ v0.3.10 快照已核实 `ask_user`/`show_view`/prompt 三处俱全（旧 fork �
 
 | 日期 | 任务 | 轮次 | 结果 | 测试 | 备注 |
 |---|---|---|---|---|---|
+| 2026-11-24 | T1 桌面端安装 dsh-im | 1 | done（激活待重启确认） | 手工接线后 junction 解析正确 | CLI 拒管 desktop（"managed exclusively by the Electron application"）；npm ci + pnpm install |
+| 2026-11-24 | ds-bot 异常修复 | 1 | done | node_modules 70 项在位 | v0.3.10 快照缺依赖，npm ci 即愈 |
+| 2026-11-24 | T3 P1 去提问化 | 3 | done | `npm test` 3795 过/8 挂（3 环境性+5 既有负载 flake）；`--check`/lint 绿；冒烟 49/55 | 测试退役改造：im.test.js 删交互 E2E 两块（-1157 行）、legacy 用例改 state 直注入、view-reply/rounds/im-telegram 同法；冒烟 6 挂为本工作区 v0.3.10×rc.5 既有分段校准问题（原版 prompt.js 对照复现，非 P1 回归）；bench 坏链按 skill 修 junction |
