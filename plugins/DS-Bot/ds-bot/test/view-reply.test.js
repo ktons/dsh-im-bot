@@ -160,7 +160,8 @@ test('cancel, dismiss, a typed yes, and a plain confirmation card never publish 
   const typed = await approve()
   emit('writer-now', 'user/message', { content: text('yes'), source: { kind: 'user' } })
   assert.equal((await call('view-reply', typed)).ok, false)
-  await show('writer-now', { title: args.title, view: args.view })
+  // A plain confirmation card (no report_issue) stays answerable as legacy data, but it never publishes an issue.
+  rt.state.views['writer-now'] = { id: 'plain-confirm', title: args.title, view: args.view, askedAt: Date.now() }
   assert.equal((await call('view-reply', await approve())).ok, true)
   assert.equal(writes, 0)
 })
@@ -310,8 +311,8 @@ test('issue report redaction preserves the destination of a failed rename', asyn
   assert.ok(args.view.children[1].text.includes(expected.join('\n')))
 })
 
-test('show_view permits display, choice and typed views in IM-origin groups', async (t) => {
-  const { emit, show, team, stop } = await start()
+test('show_view permits display views in IM-origin groups and rejects answer-seeking views', async (t) => {
+  const { show, team, stop } = await start()
   t.after(stop)
   await rt.teamTools.find(d => d.name === 'list_bots').execute({}, { agent: { id: 'chief' } })
 
@@ -319,17 +320,14 @@ test('show_view permits display, choice and typed views in IM-origin groups', as
   assert.equal(group.text, 'View cards only work in your own chat. In a group, ask in your message instead.')
   assert.equal(group.concluded, false)
   rt.roomHasImOrigin = () => true
+  // Answer-seeking views are retired everywhere: the Bot decides and acts on its recommendation.
   const interactiveGroup = await show('writer-group', { title: 'Pick', view: CHOICES })
-  assert.match(interactiveGroup.text, /user's answer arrives/)
-  assert.equal(interactiveGroup.concluded, true)
-  assert.ok(rt.state.views['writer-group'])
+  assert.match(interactiveGroup.text, /Answer-seeking views are retired/)
+  assert.equal(interactiveGroup.concluded, false)
+  assert.equal(rt.state.views['writer-group'], undefined)
   const typedGroup = await show('writer-group', { title: 'Details', view: { type: 'form', id: 'details', fields: [{ id: 'name', label: 'Name' }] } })
-  assert.match(typedGroup.text, /user's answer arrives/)
-  assert.equal(typedGroup.concluded, true)
-  const multiGroup = await show('writer-group', { title: 'Several', view: { ...CHOICES, multi: true } })
-  assert.match(multiGroup.text, /user's answer arrives/)
-  assert.equal(multiGroup.concluded, true)
-  delete rt.state.views['writer-group']
+  assert.match(typedGroup.text, /Answer-seeking views are retired/)
+  assert.equal(typedGroup.concluded, false)
   const displayGroup = await show('writer-group', { title: 'Meter', view: METER })
   assert.equal(displayGroup.text, 'The view is on screen.')
   assert.equal(displayGroup.concluded, false)
@@ -363,30 +361,14 @@ test('show_view permits display, choice and typed views in IM-origin groups', as
   assert.equal(shown.concluded, false)
   assert.equal((await team()).views['writer-now'], undefined)
 
-  // A question card and a view card in the same chat do not replace each other.
-  await rt.teamTools.find(d => d.name === 'ask_user').execute(
-    { question: 'Which name?', options: [{ label: 'Lookout' }] },
-    { agent: { id: 'writer-now' }, callId: 'q-call', concludeTurn() {} },
-  )
-  const asked = await show('writer-now', { title: 'Pick', view: CHOICES })
-  assert.equal(asked.text, 'The view is on screen; the user\'s answer arrives as their next message.')
-  assert.equal(asked.concluded, true)
+  // A legacy question card and a display view in the same chat do not replace each other.
+  rt.state.questions['writer-now'] = { id: 'which-name', callId: 'q-call', question: 'Which name?', options: [{ label: 'Lookout' }], multiSelect: false, askedAt: Date.now() }
+  const asked = await show('writer-now', { title: 'Meter', view: METER })
+  assert.equal(asked.text, 'The view is on screen.')
+  assert.equal(asked.concluded, false)
   const open = await team()
   assert.equal(open.questions['writer-now'].question, 'Which name?')
-  assert.equal(open.views['writer-now'].title, 'Pick')
-  assert.equal(open.views['writer-now'].callId, 'call-1')
-  assert.equal(typeof open.views['writer-now'].id, 'string')
-  assert.equal(typeof open.views['writer-now'].askedAt, 'number')
-  assert.deepEqual(open.views['writer-now'].view, CHOICES)
-
-  // A hidden Bot-to-Bot turn keeps both the card and its call id.
-  emit('writer-now', 'turn/end', { turn: 1, reason: { kind: 'completed' } })
-  emit('writer-now', 'turn/start', { turn: 2 })
-  emit('writer-now', 'user/message', { content: text('[Message from Chief]\nAsk them'), source: { kind: 'bot', role: 'request', senderSessionId: 'chief', senderName: 'Chief', exchangeId: 'x1', hop: 0 } })
-  const hidden = await show('writer-now', { title: 'Pick', view: CHOICES }, 'call-hidden')
-  assert.equal(hidden.concluded, true)
-  assert.equal((await team()).views['writer-now'].callId, 'call-hidden')
-  assert.equal((await team()).views['writer-now'].title, 'Pick')
+  assert.equal(open.views['writer-now'], undefined)
 
   const body = JSON.stringify(METER)
   const room = VIEW_BYTE_LIMIT - viewBytes('', METER)
@@ -395,19 +377,16 @@ test('show_view permits display, choice and typed views in IM-origin groups', as
   const over = await show('writer-now', { title: `${'x'.repeat(room)}y`, view: METER })
   assert.equal(over.text, `The view is ${viewBytes(`${'x'.repeat(room)}y`, METER)} bytes; the limit is ${VIEW_BYTE_LIMIT}.`)
   assert.equal(over.concluded, false)
-  assert.equal((await team()).views['writer-now'].title, 'Pick')
   assert.ok(body.length > 0)
 })
 
 test('view-reply claims the card, refuses a stale or invalid answer, and restores the card when queueing fails', async (t) => {
-  const { show, call, team, sent, failFlush, stop } = await start()
+  const { call, team, sent, failFlush, stop } = await start()
   t.after(stop)
   await rt.teamTools.find(d => d.name === 'list_bots').execute({}, { agent: { id: 'chief' } })
-  await rt.teamTools.find(d => d.name === 'ask_user').execute(
-    { question: 'Keep me', options: [{ label: 'Yes' }] },
-    { agent: { id: 'writer-now' }, callId: 'q-call', concludeTurn() {} },
-  )
-  await show('writer-now', { title: 'Pick', view: CHOICES }, 'call-view')
+  // Legacy fixtures: cards written straight into state, as an older version left them.
+  rt.state.questions['writer-now'] = { id: 'keep-me', callId: 'q-call', question: 'Keep me', options: [{ label: 'Yes' }], multiSelect: false, askedAt: Date.now() }
+  rt.state.views['writer-now'] = { id: 'pick-view', callId: 'call-view', title: 'Pick', view: CHOICES, askedAt: Date.now() }
   const pending = (await team()).views['writer-now']
 
   const stale = await call('view-reply', { sessionId: 'writer-now', viewId: 'gone', action: 'pick', values: { selected: ['A'] } })
@@ -456,14 +435,11 @@ test('view-reply claims the card, refuses a stale or invalid answer, and restore
 })
 
 test('dismiss-view drops the open view, keeps it as a closed card, and leaves a question card alone', async (t) => {
-  const { show, call, team, stop } = await start()
+  const { call, team, stop } = await start()
   t.after(stop)
   await rt.teamTools.find(d => d.name === 'list_bots').execute({}, { agent: { id: 'chief' } })
-  await rt.teamTools.find(d => d.name === 'ask_user').execute(
-    { question: 'Keep me', options: [{ label: 'Yes' }] },
-    { agent: { id: 'writer-now' }, callId: 'q-call', concludeTurn() {} },
-  )
-  await show('writer-now', { title: 'Pick', view: CHOICES })
+  rt.state.questions['writer-now'] = { id: 'keep-me', callId: 'q-call', question: 'Keep me', options: [{ label: 'Yes' }], multiSelect: false, askedAt: Date.now() }
+  rt.state.views['writer-now'] = { id: 'pick-view', callId: 'call-1', title: 'Pick', view: CHOICES, askedAt: Date.now() }
   assert.equal((await call('dismiss-view', { sessionId: 'writer-now' })).ok, true)
   const open = await team()
   assert.equal(open.views['writer-now'], undefined)
@@ -475,24 +451,21 @@ test('dismiss-view drops the open view, keeps it as a closed card, and leaves a 
 })
 
 test('an answered view is not kept as a closed card: its reply message carries it', async (t) => {
-  const { show, call, team, stop } = await start()
+  const { call, team, stop } = await start()
   t.after(stop)
   await rt.teamTools.find(d => d.name === 'list_bots').execute({}, { agent: { id: 'chief' } })
-  await show('writer-now', { title: 'Pick', view: CHOICES })
+  rt.state.views['writer-now'] = { id: 'pick-view', callId: 'call-1', title: 'Pick', view: CHOICES, askedAt: Date.now() }
   const pending = (await team()).views['writer-now']
   assert.equal((await call('view-reply', { sessionId: 'writer-now', viewId: pending.id, action: 'pick', values: { selected: ['A'] } })).ok, true)
   assert.deepEqual((await team()).closedCards, {})
 })
 
 test('a user message drops the open question and the open view together', async (t) => {
-  const { emit, show, team, stop } = await start()
+  const { emit, team, stop } = await start()
   t.after(stop)
   await rt.teamTools.find(d => d.name === 'list_bots').execute({}, { agent: { id: 'chief' } })
-  await rt.teamTools.find(d => d.name === 'ask_user').execute(
-    { question: 'Which name?', options: [{ label: 'Lookout' }] },
-    { agent: { id: 'writer-now' }, callId: 'q-call', concludeTurn() {} },
-  )
-  await show('writer-now', { title: 'Pick', view: CHOICES })
+  rt.state.questions['writer-now'] = { id: 'which-name', callId: 'q-call', question: 'Which name?', options: [{ label: 'Lookout' }], multiSelect: false, askedAt: Date.now() }
+  rt.state.views['writer-now'] = { id: 'pick-view', callId: 'call-1', title: 'Pick', view: CHOICES, askedAt: Date.now() }
   assert.equal((await team()).questions['writer-now'].question, 'Which name?')
   assert.equal((await team()).views['writer-now'].title, 'Pick')
   emit('writer-now', 'user/message', { content: text('never mind'), source: { kind: 'user' } })
@@ -505,16 +478,13 @@ test('a user message drops the open question and the open view together', async 
 })
 
 test('a hidden-turn card closes into closedCards at its call, never into a dock record', async (t) => {
-  const { emit, show, call, team, stop } = await start()
+  const { emit, call, team, stop } = await start()
   t.after(stop)
   await rt.teamTools.find(d => d.name === 'list_bots').execute({}, { agent: { id: 'chief' } })
   emit('writer-now', 'turn/start', { turn: 1 })
   emit('writer-now', 'user/message', { content: text('[Message from Chief]\nAsk them'), source: { kind: 'bot', role: 'request', senderSessionId: 'chief', senderName: 'Chief', exchangeId: 'x1', hop: 0 } })
-  await rt.teamTools.find(d => d.name === 'ask_user').execute(
-    { question: 'Which name?', options: [{ label: 'Lookout' }] },
-    { agent: { id: 'writer-now' }, callId: 'q-hidden', concludeTurn() {} },
-  )
-  await show('writer-now', { title: 'Pick', view: CHOICES }, 'v-hidden')
+  rt.state.questions['writer-now'] = { id: 'which-name', callId: 'q-hidden', question: 'Which name?', options: [{ label: 'Lookout' }], multiSelect: false, askedAt: Date.now() }
+  rt.state.views['writer-now'] = { id: 'pick-view', callId: 'v-hidden', title: 'Pick', view: CHOICES, askedAt: Date.now() }
   emit('writer-now', 'user/message', { content: text('never mind'), source: { kind: 'user' } })
   let open = await team()
   assert.equal(open.questions['writer-now'], undefined)
@@ -522,7 +492,7 @@ test('a hidden-turn card closes into closedCards at its call, never into a dock 
   assert.deepEqual(open.closedCards, { 'writer-now': { 'q-hidden': 'replied', 'v-hidden': 'replied' } })
   assert.equal(open.closedViews, undefined)
 
-  await show('writer-now', { title: 'Next', view: CHOICES }, 'v-hidden-2')
+  rt.state.views['writer-now'] = { id: 'pick-view-2', callId: 'v-hidden-2', title: 'Next', view: CHOICES, askedAt: Date.now() }
   assert.equal((await call('dismiss-view', { sessionId: 'writer-now' })).ok, true)
   open = await team()
   assert.equal(open.views['writer-now'], undefined)

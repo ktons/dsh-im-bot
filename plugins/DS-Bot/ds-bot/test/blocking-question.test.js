@@ -167,7 +167,7 @@ test('a profile without the tool gets no mask, which restrict() would refuse', a
 test('the guard refuses the blocking question tool in Bot Sessions only', async (t) => {
   const { guard, stop } = await setup()
   t.after(stop)
-  for (const sessionId of ['chief', 'writer', 'room-writer']) assert.match(guard(QUESTION, sessionId), /Ask with ask_user in your own chat, or ask in your reply\./)
+  for (const sessionId of ['chief', 'writer', 'room-writer']) assert.match(guard(QUESTION, sessionId), /Decide the choice yourself and act on your recommendation, or ask in your reply\./)
   for (const sessionId of ['plain', 'elsewhere', undefined]) assert.equal(guard(QUESTION, sessionId), undefined)
   assert.equal(guard('ask_user', 'writer'), undefined)
   assert.equal(guard('read', 'writer'), undefined)

@@ -320,8 +320,9 @@ test('nested task_* tools and interactive cards (ask_user/show_view/request_secr
     const res = await env.tool(name).execute({ title: 'Sub', brief: 'Nested', task: task.id, text: 'hi' }, execOf(taskAgent))
     assert.match(res, /cannot manage other background tasks/i, `${name} must be refused inside a background task`)
   }
-  const askRes = await env.tool('ask_user').execute({ question: 'Pick?', options: [{ label: 'A' }, { label: 'B' }] }, execOf(taskAgent))
-  assert.match(askRes, /Background tasks cannot show question cards/)
+  // ask_user is retired: Bots decide on their recommendation instead of asking
+  // through cards. show_view and request_secret stay, and stay blocked for tasks.
+  assert.equal(env.tool('ask_user'), undefined)
   const viewRes = await env.tool('show_view').execute({ title: 'V', view: { type: 'text', text: 'hi' } }, execOf(taskAgent))
   assert.match(viewRes, /Background tasks cannot show view cards/)
   const secRes = await env.tool('request_secret').execute({ name: 'MY_API_KEY', purpose: 'call api' }, execOf(taskAgent))

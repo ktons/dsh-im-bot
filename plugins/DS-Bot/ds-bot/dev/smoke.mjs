@@ -201,27 +201,13 @@ await step('a Bot is not offered dsh\'s blocking question tool', () => send(botN
     ?? expect(saidText(calls, /^收到：阻塞提问/), 'expected Writer to answer in its reply')
 })
 
-// show_view: an options card waits in state.views. The key is the chat's Session
-// id — the Bot id until its chat first moves to a fresh part (chatOf).
-await step('Writer shows an options view', () => send(botNamed('Writer').id, '视图选项'), () => {
+// Answer-seeking views are retired: the mock still calls show_view with options,
+// but the tool refuses and nothing waits in state.views. The chat's Session id is
+// the key — the Bot id until its chat first moves to a fresh part (chatOf).
+await step('Writer\'s options view is refused as retired', () => send(botNamed('Writer').id, '视图选项'), (_value, calls) => {
   const chat = botNamed('Writer').sessionId ?? botNamed('Writer').id
-  const view = state().views?.[chat]
-  return expect(view?.title === 'Pick a lane' && typeof view.id === 'string', `no pending view (${JSON.stringify(state().views)})`)
-    ?? expect(view.callId !== undefined, 'the view does not carry its call')
-})
-await step('the view answer reaches Writer and clears the card', () => {
-  const chat = botNamed('Writer').sessionId ?? botNamed('Writer').id
-  return api('view-reply', {
-    sessionId: chat,
-    viewId: state().views[chat].id,
-    action: 'lane',
-    values: { selected: ['Ship now'] },
-  })
-}, (_value, calls) => {
-  const chat = botNamed('Writer').sessionId ?? botNamed('Writer').id
-  return expect(state().views?.[chat] === undefined, 'the view is still open')
-    // DSH may prepend whitespace to the reply payload.
-    ?? expect(calls.some(call => call.last?.trimStart().startsWith('{"kind":"answer_to_pending_view"')), 'the answer did not arrive as the Bot\'s next message')
+  return expect(calls.some(call => (call.out ?? []).some(block => block.type === 'tool_use' && block.name === 'show_view')), 'Writer did not call show_view')
+    ?? expect(state().views?.[chat] === undefined, `a pending view is still stored (${JSON.stringify(state().views)})`)
 })
 
 // A display-only view just under the byte limit lives on the recorded call; re-reading

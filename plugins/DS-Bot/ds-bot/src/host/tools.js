@@ -904,72 +904,11 @@ export function install(rt) {
     },
   }))
 
-  rt.teamTools.push(defineTool({
-    name: 'ask_user',
-    description: 'Show the user a short multiple-choice question card in the chat (in your own chat, the user can also type their own answer). Group cards accept listed choices only; do not set allowCustom in a group. Calling it ends your turn; the chosen answer arrives later as the user\'s next message.',
-    parameters: {
-      question: { type: 'string', required: true, description: 'One short question' },
-      options: {
-        type: 'array',
-        required: true,
-        description: 'Two to four answers',
-        items: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            label: { type: 'string', required: true, description: 'Short answer shown on the option' },
-            description: { type: 'string', description: 'Optional one-line explanation under the label' },
-          },
-        },
-      },
-      detail: { type: 'string', description: 'Optional one-line context shown under the question' },
-      multiSelect: { type: 'boolean', description: 'Allow choosing several options' },
-      allowCustom: { type: 'boolean', description: 'Also offer a field for an answer in the user\'s own words' },
-    },
-    output,
-    async execute(args, exec) {
-      await rt.load()
-      const id = exec.agent?.id
-      if (rt.taskOwners?.has(id)) return 'Background tasks cannot show question cards directly. Put the question in your reply so it goes back to your own chat, where you can ask the user and start a follow-up task if needed.'
-      const owner = rt.groupOwners.get(id)
-      if (owner !== undefined && !rt.roomHasImOrigin?.(owner.roomId)) return 'Question cards only work in your own chat. In a group, ask in your message instead.'
-      if (owner !== undefined && args.allowCustom === true) return 'Group question cards accept listed choices only. Call ask_user with allowCustom: false, or ask for free text in your message instead.'
-      if (owner === undefined && !rt.chatOwners.has(id)) return `Only Bots on the team can use ask_user. Use ${BLOCKING_QUESTION_TOOL} if it is available in this session, or ask the user in your reply.`
-      const options = (Array.isArray(args.options) ? args.options : [])
-        .map(option => (typeof option === 'string' ? { label: option } : option ?? {}))
-        .map(option => ({
-          label: String(option.label ?? '').trim(),
-          ...(option.description ? { description: String(option.description).trim() } : {}),
-        }))
-        .filter(option => option.label !== '')
-        .slice(0, 6)
-      if (options.length === 0) return 'Give at least one option.'
-      state.questions[id] = {
-        id: randomUUID(),
-        ...(exec.callId ? { callId: exec.callId } : {}),
-        question: String(args.question ?? '').trim(),
-        ...(args.detail ? { detail: String(args.detail).trim() } : {}),
-        options,
-        multiSelect: args.multiSelect === true,
-        ...(args.allowCustom === true ? { allowCustom: true } : {}),
-        ...(owner === undefined ? {} : { imOrigin: rt.captureImOrigin?.(rt.roomOf(owner.roomId)?.sessionId ?? owner.roomId) }),
-        askedAt: Date.now(),
-      }
-      if (owner !== undefined) {
-        rt.logRoom(rt.roomOf(owner.roomId), { who: rt.botOf(owner.botId).name, botId: owner.botId, questionId: state.questions[id].id, text: `Asked: ${state.questions[id].question}\n${options.map((option, index) => `${index + 1}. ${option.label}`).join('\n')}` })
-      }
-      await rt.save()
-      rt.cardShown?.(id, 'question', state.questions[id].question)
-      exec.concludeTurn?.()
-      return 'The card is on screen; the user\'s answer arrives as their next message.'
-    },
-  }))
-
   // Scoped per Bot session, not global: another plugin's global show_view serves
   // the sessions ds-bot does not own, while this one shadows it inside them.
   rt.teamTools.push(defineTool({
     name: 'show_view',
-    description: `${showViewDescription({ where: 'your own chat or an IM-origin group' })} IM forms and multi-select views show instructions for replying with !card <code> and typed values. Group replies must mention the Bot. Bare codes never answer cards.`,
+    description: `${showViewDescription({ where: 'your own chat or an IM-origin group' })} Answer-seeking views are retired: display views only, so set await_reply: false unless it is an issue report. Put any question or choice in your reply together with your recommendation.`,
     parameters: {
       ...showViewParameters,
       report_issue: { type: 'string', description: 'Only for DS Bot issue approval: use the exact arguments from prepare_ds_bot_issue' },
@@ -991,6 +930,7 @@ export function install(rt) {
       if (checked.interactive && args.await_reply === false) return 'This view has controls to submit, so it waits for the user\'s answer; call show_view without await_reply: false.'
       const issueDraft = args.report_issue === undefined ? undefined : rt.claimIssueDraft?.(id, args.report_issue, checked)
       if (args.report_issue !== undefined && issueDraft === undefined) return 'This draft changed or expired. Call prepare_ds_bot_issue again and use its exact arguments.'
+      if (checked.interactive && issueDraft === undefined) return 'Answer-seeking views are retired. Show data with a display view (call show_view with await_reply: false), and put any question or choice in your reply with your recommendation.'
       const awaitReply = args.await_reply ?? checked.interactive
       if (!awaitReply) {
         if (owner !== undefined) {
@@ -1329,8 +1269,9 @@ export function install(rt) {
   }
 
   // dsh's own question tool holds the turn open until the user answers, and every
-  // message from another Bot or a group round queues behind it. Bot Sessions ask
-  // through ask_user instead, so it is taken out of their tool list, as are the goal
+  // message from another Bot or a group round queues behind it. Bot Sessions decide
+  // and act on their recommendation instead of asking through cards (ask_user is
+  // retired), so this blocking tool is taken out of their tool list, as are the goal
   // and delegation tools. The restricts are kept with the Session's scope, so they
   // lift with it.
   const hideBotUnusedTools = (agent) => {
@@ -1362,7 +1303,7 @@ export function install(rt) {
   // goal made there is blocked.
   ctx.tools.guard((exec) => {
     if (!rt.isBotSession(exec.agent?.id)) return undefined
-    if (exec.name === BLOCKING_QUESTION_TOOL) return `Bots cannot use ${BLOCKING_QUESTION_TOOL}. Ask with ask_user in your own chat, or ask in your reply.`
+    if (exec.name === BLOCKING_QUESTION_TOOL) return `Bots cannot use ${BLOCKING_QUESTION_TOOL}. Decide the choice yourself and act on your recommendation, or ask in your reply.`
     if (rt.taskOwners?.has(exec.agent?.id)) {
       if (exec.name === 'browser_handoff') return 'Background tasks cannot hand the browser to the user. Report back to your own chat so it can ask the user to take over.'
       if (SCHEDULE_TARGET_TOOLS.includes(exec.name)) return 'Background tasks cannot create or change schedules on a temporary task session. Report back to your own chat so it can manage schedules there.'
