@@ -40,7 +40,7 @@
 
 - Node v22.23.3、pnpm 11.28.5（corepack 启用）；VS 18 Community 含 VC++ 工具链（打包预检需要）
 - Git Bash 的 GNU tar 对 `D:\` 路径有远程主机误判 bug（System32 的 bsdtar 无此问题）
-- 本机代理 `127.0.0.1:7897`（HTTP）；GitHub 直连超时（HTTPS 需代理，SSH 直连可用），npmmirror 可用作 npm 源与 electron-builder 二进制源
+- 本机代理 `127.0.0.1:7897`（HTTP）；GitHub 直连超时（HTTPS 与 SSH:22 均需代理；SSH 密钥在 **Windows ssh-agent** 里，Git Bash 自带 ssh 连不上 agent——push 用 `git -c "core.sshCommand=C:/Windows/System32/OpenSSH/ssh.exe -o ProxyCommand=C:/PROGRA~1/Git/mingw64/bin/connect.exe\ -S\ 127.0.0.1:7897\ %h\ %p" push`），npmmirror 可用作 npm 源与 electron-builder 二进制源
 - 内存 30.6GB；Host bundle 打包需大量 commit 内存，与大内存程序并存时会 OOM（exit 0xC0000409）
 - `dsh/apps/desktop/.env.windows`：本地未签名打包配置（git 忽略），勿提交勿删除
 
