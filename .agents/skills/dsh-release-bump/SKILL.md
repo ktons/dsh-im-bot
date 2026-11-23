@@ -46,7 +46,7 @@ git -C <repo> switch -C stable refs/tags/<新tag>   # 已有 stable 时用 git -
 
 ## 4. 重建并刷新桌面端
 
-按 skill **dsh-desktop-release** 的流程：打包 → `deploy-dsh-bin.ps1` → 验证窗口。
+dsh 换版本后重建**必须先清过期编译缓存**——跨版本旧 `lib/`/`dist/` 产物会让 tsc 门按旧 `.d.ts` 报假错（症状与清法见 skill **dsh-desktop-release** 第 0 节与坑表第四条）。然后按其流程：打包 → `deploy-dsh-bin.ps1` → 验证窗口。
 
 ## 5. 记录
 
