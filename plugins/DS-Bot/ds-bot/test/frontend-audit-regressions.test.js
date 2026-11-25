@@ -103,7 +103,7 @@ test('every --bt-* CSS variable referenced in client styles is defined or an all
     '--bt-leftcol-fill', '--bt-fx-blur-2', '--bt-fx-blur-3', '--bt-fx-blur-4',
     '--bt-fx-blur-5', '--bt-fx-blur-6', '--bt-browser-bar', '--bt-col-w',
     '--bt-tint', '--bt-bg', '--bt-fg', '--bt-ink-mix', '--bt-ring',
-    '--bt-hue', '--bt-im-', '--bt-effort-p', '--bt-dot-p',
+    '--bt-hue', '--bt-effort-p', '--bt-dot-p',
     '--bt-skin-sidebar', '--bt-skin-main', '--bt-skin-card',
   ])
   const used = new Map()

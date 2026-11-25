@@ -3,7 +3,7 @@
 // Each task is a dedicated Session stored in `bot.tasks[]`, never swapped into
 // `bot.sessionId`. A task keeps a stable `id` across context part switches,
 // runs an explicit lifecycle state machine, delivers all messages through `rt.deliver`
-// (capabilities + inflight durability), integrates with handoff works and IM origins,
+// (capabilities + inflight durability), integrates with handoff works,
 // bubbles approvals to the foreground/mobile/IM, and exposes hooks for v0.4.0 events.
 import { randomBytes } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
@@ -225,8 +225,8 @@ export function install(rt) {
   }))
 
   // Settles a task into a terminal state (`completed`, `failed`, `stopped`, `interrupted`),
-  // closes any parent handoff sub-work, notifies the foreground chat via `rt.deliver`
-  // (restoring IM origin if captured), and fires `onTaskEvent`.
+  // closes any parent handoff sub-work, notifies the foreground chat via `rt.deliver`,
+  // and fires `onTaskEvent`.
   async function settleTask(bot, task, outcome, { text = '', error, notifyForeground = true } = {}) {
     if (settling.has(task.id) || !isActiveTask(task)) return
     settling.add(task.id)
@@ -413,7 +413,6 @@ export function install(rt) {
 
     const id = newId()
     const now = Date.now()
-    const imOrigin = room !== undefined ? rt.captureImOrigin?.(rt.sessionOfRoom(room)) : rt.captureImOrigin?.(fromSessionId)
     // Link into the DM handoff tree when a foreground DM turn is answering another Bot.
     // Group tasks participate in group dispatch batches via `hasRoomTasks` instead.
     const liveEntry = rt.live.get(fromSessionId)
@@ -431,7 +430,6 @@ export function install(rt) {
       updatedAt: now,
       ...(room !== undefined ? { roomId: room.id } : {}),
       ...(taskWorkId !== undefined ? { workId: taskWorkId, parentWorkId: parentWork } : {}),
-      ...(imOrigin !== undefined ? { imOrigin } : {}),
     }
 
     const { sessionId, forked, task } = await rt.openTaskPart(bot, fromSessionId, baseTask, { workDir: resolvedDir })
@@ -938,7 +936,6 @@ export function install(rt) {
       }
       return 0
     })()
-    const movedImOrigin = isBotHandoff ? undefined : rt.captureImOrigin?.(oldSid)
 
     const record = { oldSid, committed: false, newSid: undefined, messages: seededMessages, promise: undefined }
     const run = (async () => {
@@ -982,7 +979,6 @@ export function install(rt) {
         startedAt: entry?.since ?? now,
         updatedAt: now,
         ...(isBotHandoff && activeWork !== undefined ? { exchangeId: activeWork } : {}),
-        ...(movedImOrigin !== undefined ? { imOrigin: movedImOrigin } : {}),
       }
       ;(bot.tasks ??= []).push(task)
       bot.sessionId = newSid
@@ -990,9 +986,6 @@ export function install(rt) {
       rt.taskOwners.set(oldSid, { botId: bot.id, taskId: task.id })
       record.committed = true
       record.newSid = newSid
-      // Clear live IM origin on the moved background session so it never streams raw lines
-      // directly to IM; `task.imOrigin` handles approvals and the final `task-report`.
-      rt.clearImOrigin?.(oldSid)
       if (state.questions[oldSid] !== undefined) {
         rt.closeCard(oldSid, state.questions[oldSid], 'dismissed')
         delete state.questions[oldSid]

@@ -1,4 +1,4 @@
-# IM, phone and mobile access
+# Phone and mobile access
 
 Remote access talks to the team running on the host computer. It does not move that team's files and model runtime onto the phone.
 
@@ -14,10 +14,6 @@ Pairing is a user security action. There is no Bot configuration tool for enabli
 
 The link is end-to-end encrypted. Browser remote still runs a page supplied by its Server: use only a trusted Server. Browser storage is encrypted with a non-extractable key in IndexedDB, but that does not make an untrusted web page safe. Sensitive operations require the phone app or computer. Browser remote has no background notifications.
 
-## IM platforms
-
-Open **Settings → IM** to configure supported messaging-platform connections. Use the platform choices and setup fields actually shown there; do not assume every chat platform is supported. Account credentials and pairing are user UI work, not Main Bot powers. IM carries messages to the existing team; it is not a new OS sandbox or permission grant.
-
 ## Problems
 
 - A paired client needs the host computer and link connection available. Check **Phone** status before pairing repeatedly.
@@ -25,4 +21,4 @@ Open **Settings → IM** to configure supported messaging-platform connections. 
 - A sensitive operation unavailable in browser remote should be done on the phone app or computer, not through a workaround.
 - Revoke lost devices from **Phones**. Do not merely hide their chat.
 
-Sources: README.md (Browser remote); src/client/phone-page.js, phone-browser.js, im-page.js; docs/plans/2026-10-24-mobile-app.md; docs/plans/2026-11-04-im.md; docs/plans/2026-11-17-web-remote.md.
+Sources: README.md (Browser remote); src/client/phone-page.js, phone-browser.js; docs/plans/2026-10-24-mobile-app.md; docs/plans/2026-11-17-web-remote.md.

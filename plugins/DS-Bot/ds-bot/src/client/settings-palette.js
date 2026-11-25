@@ -28,7 +28,6 @@ export const SEARCH_ENTRIES = [
   { id: 'groups', label: 'Group chats', group: 'Team', page: 'groups', icon: 'groups', keywords: 'room members admin 群聊 群组 成员' },
   { id: 'schedules', label: 'Scheduled tasks', group: 'Team', page: 'schedules', icon: 'schedules', keywords: 'cron timer automation 定时任务 周期' },
   { id: 'connectors', label: 'Connectors', group: 'Connect', page: 'connectors', icon: 'connectors', keywords: 'github mail email notion figma linear slack 连接器 邮箱 应用' },
-  { id: 'im', label: 'IM', group: 'Connect', page: 'im', icon: 'im', keywords: 'wechat weixin feishu dingtalk wecom qq telegram discord slack 微信 飞书 钉钉 企微 聊天软件' },
   { id: 'phone', label: 'Phone', group: 'Connect', page: 'phone', icon: 'phone', keywords: 'mobile app qr relay android ios remote 手机 二维码 远控 配对' },
   { id: 'mcp', label: 'MCP access', group: 'Connect', page: 'mcp', icon: 'mcp', keywords: 'token port client external agent mcp 端口 令牌' },
   { id: 'computer', label: 'Computer use', group: 'Tools', page: 'computer', icon: 'computer', keywords: 'screen accessibility mouse keyboard desktop 电脑操控 屏幕 辅助功能' },

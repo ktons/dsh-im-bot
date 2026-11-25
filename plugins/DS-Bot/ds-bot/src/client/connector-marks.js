@@ -1,8 +1,7 @@
 // Connector and mailbox marks. The SI paths are each service's logo from
 // Simple Icons 16.36.0 (CC0-1.0, https://simpleicons.org); Context7's mark is
 // the icon from upstash/context7 (MIT, public/context7-icon.svg). The remaining
-// marks are drawn here (the IM page reuses the Telegram, WeChat, Discord, QQ and
-// Slack ones): Slack, Canva, monday.com, Attio, Exa, DeepWiki,
+// marks are drawn here: Slack, Canva, monday.com, Attio, Exa, DeepWiki,
 // Microsoft Learn, Amap and the envelope. See NOTICE.
 import { createElement as h } from 'react'
 

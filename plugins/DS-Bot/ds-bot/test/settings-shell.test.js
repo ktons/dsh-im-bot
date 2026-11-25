@@ -466,7 +466,6 @@ body[data-bt-motion=lively] .bt-mark{animation:none}`
   const shellOwn = styles.botOwnCss(styles.SHELL_CSS)
   assert.doesNotMatch(shellOwn, /class\*=/)
   assert.match(shellOwn, /\.bt-settings-nav\{/)
-  assert.match(shellOwn, /body\[data-ds-dark-theme\]\{--bt-im-telegram:/)
 })
 
 test('in Agent mode, General offers the way back to Bot mode', () => {

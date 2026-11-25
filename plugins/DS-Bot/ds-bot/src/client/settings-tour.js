@@ -84,9 +84,6 @@ const SECTION_TOURS = {
     { target: 'conn-search', title: 'Search connectors', cue: 'Search an app here, or click "+ Custom" to add your own MCP server.' },
     { target: 'conn-grid', title: 'Connectors', cue: 'Click "Connect" on any card to sign in or paste credentials.' },
   ],
-  im: [
-    { target: 'im-platforms', title: 'Add an IM bot', cue: 'Click a platform below and follow its steps to bind a Bot.' },
-  ],
   phone: [
     { target: 'phone-pair', title: 'Pair a phone', cue: 'Click "Turn on & pair" to show a one-time QR code, then scan it on your phone.' },
     { target: 'phone-server', title: 'Server', cue: 'Click "Edit" here only if you host your own relay server.' },

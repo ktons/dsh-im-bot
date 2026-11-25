@@ -125,15 +125,13 @@ export const QueueIcon = lineIcon(['M4 6h12', 'M4 10h12', 'M4 14h8', 'M14 12.5l2
 export const LayersIcon = lineIcon(['M10 3.5L3 7.25 10 11l7-3.75z', 'M3 10.5L10 14.25l7-3.75', 'M3 13.75L10 17.5l7-3.75'])
 // Modular tiles with a rotated accent block: shared capabilities (distinct from MCP plug).
 export const BlocksIcon = lineIcon(['M3.5 3.5h5v5h-5z', 'M3.5 11.5h5v5h-5z', 'M11.5 11.5h5v5h-5z', 'M14 3.5l2.5 2.5L14 8.5 11.5 6z'])
-// Paper plane: external IM channels (distinct from group chat bubbles and Phone).
-export const SendIcon = lineIcon(['M16.8 3.5L9.5 10.8', 'M16.8 3.5l-4.6 13-2.7-5.7-5.7-2.7z'])
 // Compass: Settings guide / overview.
 export const CompassIcon = lineIcon(['M10 3.25a6.75 6.75 0 1 1 0 13.5 6.75 6.75 0 0 1 0-13.5z', 'M12.9 7.1l-1.7 4.1-4.1 1.7 1.7-4.1z'])
 // Swatch palette: Appearance settings (distinct from theme sliders and blocks).
 export const PaletteIcon = lineIcon(['M10 3.25a6.75 6.75 0 1 0 0 13.5h1.2a1.7 1.7 0 0 0 1.2-2.9 1.7 1.7 0 0 1 1.2-2.9h1.2a2.2 2.2 0 0 0 2.1-2.5A6.75 6.75 0 0 0 10 3.25z', 'M7.1 8.6h.01M9.5 6.6h.01M12.7 7.6h.01'])
 // Puzzle piece: built-in plugins fallback (distinct from model sliders).
 export const PuzzleIcon = lineIcon(['M8 3.5a1.5 1.5 0 0 1 3 0v1.25h3.5a1 1 0 0 1 1 1v3.5h1.25a1.5 1.5 0 0 1 0 3H15.5v3.25a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1H8z'])
-export const SETTINGS_ICONS = { guide: CompassIcon, general: GearIcon, appearance: PaletteIcon, bots: PeopleIcon, groups: ChatsIcon, im: SendIcon, usage: GaugeIcon }
+export const SETTINGS_ICONS = { guide: CompassIcon, general: GearIcon, appearance: PaletteIcon, bots: PeopleIcon, groups: ChatsIcon, usage: GaugeIcon }
 export function OverviewIcon() {
   return h('svg', { width: 16, height: 16, viewBox: '0 0 20 20', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, 'aria-hidden': true },
     h('rect', { x: 3, y: 3, width: 6, height: 6, rx: 1.8 }), h('rect', { x: 11, y: 3, width: 6, height: 6, rx: 1.8 }),

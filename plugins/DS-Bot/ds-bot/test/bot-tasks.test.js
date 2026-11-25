@@ -456,31 +456,6 @@ test('background task approval bubbles directly as answerable with taskId/taskTi
   assert.equal(task.status, 'running')
 })
 
-test('background task preserves IM origin in state and delivers taskId without one-shot token', async (t) => {
-  const env = await startEnv()
-  t.after(env.stop)
-  env.rt.captureImOrigin = (sid) => (sid === 'dm-a' ? { connId: 'feishu-1', chatKey: 'chat-9', senderId: 'u1', binding: 'bot:a' } : undefined)
-
-  const dmA = env.agentMap.get('dm-a')
-  await env.tool('task_start').execute({ title: 'IM report', brief: 'Fetch metrics' }, execOf(dmA))
-  const task = env.rt.botOf('a').tasks[0]
-  assert.deepEqual(task.imOrigin, { connId: 'feishu-1', chatKey: 'chat-9', senderId: 'u1', binding: 'bot:a' })
-
-  // Foreground finishes its initial reply ("Started background task..."), clearing live origins.
-  await env.emit('dm-a', 'turn/end', { turn: 1, reason: { kind: 'completed' } })
-
-  // Task completes later and delivers task-report with taskId so im/index.js resolves persisted task.imOrigin even across deferred redelivery or restart.
-  await env.emit(task.sessionId, 'turn/start', { turn: 1 })
-  await env.emit(task.sessionId, 'assistant/message', { turn: 1, message: { role: 'assistant', content: [{ type: 'text', text: 'Metrics: 99.9%.' }] } })
-  await env.emit(task.sessionId, 'turn/end', { turn: 1, reason: { kind: 'completed' } })
-  await waitFor(() => env.deliveries.some(d => d.role === 'task-report'))
-
-  const report = env.deliveries.find(d => d.role === 'task-report')
-  assert.equal(report.taskId, task.id)
-  assert.equal(report.imOrigin, undefined)
-  assert.deepEqual(env.rt.taskById(task.id).task.imOrigin, { connId: 'feishu-1', chatKey: 'chat-9', senderId: 'u1', binding: 'bot:a' })
-})
-
 test('reconcileTasksAfterRestart marks orphaned idle tasks interrupted while preserving inflight, inbox-queued, switching, and waiting_work tasks', async (t) => {
   const env = await startEnv()
   t.after(env.stop)

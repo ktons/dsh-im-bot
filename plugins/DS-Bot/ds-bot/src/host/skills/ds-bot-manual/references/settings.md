@@ -11,7 +11,6 @@ Open **Settings** from the sidebar. The English page labels below are the DS Bot
 | Bot models | Team model assignments | User; supported individual assignments also via Bot tools |
 | Group chats | Group membership and settings | User; Main Bot or group admin via supported tools |
 | Connectors | Service accounts, custom servers and mail | User sign-in; Bot can request a connection |
-| IM | Messaging platform connections | User |
 | Phone | Phone access, pairing and paired-device revocation | User |
 | Capabilities | Shared MCP servers, skills and packs | User or Bot; local commands require user approval |
 | DeepSeek services | DeepSeek service configuration | User |

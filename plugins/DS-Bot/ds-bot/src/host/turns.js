@@ -9,7 +9,6 @@ import { cleanText } from './diagnostics.js'
 import { absoluteLinks } from './links.js'
 import { splitRef, textOf } from './text.js'
 import { sameConversation, threadCurrentOfPart } from './threads.js'
-import { viaOf } from '../shared/im-platforms.js'
 import { reminderText } from './schedules.js'
 import { usageChunk } from './usage.js'
 
@@ -1277,7 +1276,7 @@ export function install(rt) {
             const content = Array.isArray(event.data.content) ? event.data.content : []
             const images = content.filter(block => block?.type === 'image' && !block.offloaded).map(block => block.attachment)
             const files = content.filter(block => block?.type === 'file' && block.attachment !== undefined).map(block => block.attachment)
-            queueRoomMessage(rt.roomOf(id).id, { text: textOf(event.data.content), ...(images.length > 0 ? { images } : {}), ...(files.length > 0 ? { files } : {}), ...(viaOf(source) ? { via: viaOf(source) } : {}) })
+            queueRoomMessage(rt.roomOf(id).id, { text: textOf(event.data.content), ...(images.length > 0 ? { images } : {}), ...(files.length > 0 ? { files } : {}) })
           }
           const own = rt.chatOwners.get(id)
           if (own !== undefined && !rt.taskOwners?.has(id)) rt.userWrote(own)
@@ -1398,7 +1397,6 @@ export function install(rt) {
             work: result.info.work,
             ...(result.info.roomId ? { roomId: result.info.roomId } : {}),
             ...(result.info.taskId ? { taskId: result.info.taskId } : {}),
-            ...(result.info.imOrigin ? { imOrigin: result.info.imOrigin } : {}),
             deferred: true,
           }).catch(error => rt.warn('ds-bot: handing back a result failed: %s', error))
         }

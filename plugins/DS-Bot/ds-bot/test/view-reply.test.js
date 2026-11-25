@@ -311,15 +311,11 @@ test('issue report redaction preserves the destination of a failed rename', asyn
   assert.ok(args.view.children[1].text.includes(expected.join('\n')))
 })
 
-test('show_view permits display views in IM-origin groups and rejects answer-seeking views', async (t) => {
+test('show_view rejects answer-seeking views and permits display views in groups', async (t) => {
   const { show, team, stop } = await start()
   t.after(stop)
   await rt.teamTools.find(d => d.name === 'list_bots').execute({}, { agent: { id: 'chief' } })
 
-  const group = await show('writer-group', { title: 'Pick', view: CHOICES })
-  assert.equal(group.text, 'View cards only work in your own chat. In a group, ask in your message instead.')
-  assert.equal(group.concluded, false)
-  rt.roomHasImOrigin = () => true
   // Answer-seeking views are retired everywhere: the Bot decides and acts on its recommendation.
   const interactiveGroup = await show('writer-group', { title: 'Pick', view: CHOICES })
   assert.match(interactiveGroup.text, /Answer-seeking views are retired/)

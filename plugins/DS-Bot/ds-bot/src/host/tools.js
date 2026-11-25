@@ -908,7 +908,7 @@ export function install(rt) {
   // the sessions ds-bot does not own, while this one shadows it inside them.
   rt.teamTools.push(defineTool({
     name: 'show_view',
-    description: `${showViewDescription({ where: 'your own chat or an IM-origin group' })} Answer-seeking views are retired: display views only, so set await_reply: false unless it is an issue report. Put any question or choice in your reply together with your recommendation.`,
+    description: `${showViewDescription({ where: 'your own chat or a group' })} Answer-seeking views are retired: display views only, so set await_reply: false unless it is an issue report. Put any question or choice in your reply together with your recommendation.`,
     parameters: {
       ...showViewParameters,
       report_issue: { type: 'string', description: 'Only for DS Bot issue approval: use the exact arguments from prepare_ds_bot_issue' },
@@ -919,7 +919,6 @@ export function install(rt) {
       const id = exec.agent?.id
       if (rt.taskOwners?.has(id)) return 'Background tasks cannot show view cards directly. Report the data or question back to your own chat, where you can show a view to the user.'
       const owner = rt.groupOwners.get(id)
-      if (owner !== undefined && !rt.roomHasImOrigin?.(owner.roomId)) return 'View cards only work in your own chat. In a group, ask in your message instead.'
       if (owner === undefined && !rt.chatOwners.has(id)) return `Only Bots on the team can use show_view. Use ${BLOCKING_QUESTION_TOOL} if it is available in this session, or ask the user in your reply.`
       const checked = checkShownView(args.title, args.view)
       if (checked.error !== undefined) return checked.error
@@ -939,14 +938,12 @@ export function install(rt) {
         }
         return 'The view is on screen.'
       }
-      const imOrigin = rt.captureImOrigin?.(owner === undefined ? id : rt.roomOf(owner.roomId)?.sessionId ?? owner.roomId)
       state.views[id] = {
         id: randomUUID(),
         ...(exec.callId ? { callId: exec.callId } : {}),
         title,
         view,
         ...(issueDraft === undefined ? {} : { issueDraft }),
-        ...(imOrigin === undefined ? {} : { imOrigin }),
         askedAt: Date.now(),
       }
       if (owner !== undefined) {

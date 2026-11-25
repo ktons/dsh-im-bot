@@ -24,7 +24,6 @@ import { CHECKPOINT_PROMPT, STEWARD_SYSTEM, checkpointCount, checkpointTail, che
 import { RESUME_DELAY_MS } from './resume.js'
 import { clip, createClock, escapeRegExp, estimateTokens, reminderPrompts, splitRef, textOf } from './text.js'
 import { pageThinkingMs } from './thinking.js'
-import { viaOf } from '../shared/im-platforms.js'
 import { ownChatSessions, pushThreadPart, successorOfMovedPart, threadCurrent, threadCurrentOfPart, threadOf, threadOfPart } from './threads.js'
 import { checkShownView, normalizeView, readViewReply, viewCardText, viewReply, viewReplyText } from 'deep-view/core'
 
@@ -945,14 +944,12 @@ export function install(rt) {
     ].join('\n')
   }
 
-  // Carries any active IM turn origin onto a synthetic switch/resume source without
-  // replaying a stale request rpcId that the earlier part already consumed.
+  // A synthetic switch/resume source never replays a stale request rpcId that the
+  // earlier part already consumed.
   function carryOriginSource(job, base) {
     const source = { ...base }
     delete source.rpcId
-    if (job.resumeOrigin === undefined) return source
-    job.originSent = true
-    return { ...source, imOrigin: job.resumeOrigin }
+    return source
   }
 
   // A turn stopped for a switch goes on with its own source, so its reply still
@@ -1152,8 +1149,7 @@ export function install(rt) {
   function startSwitch(agent, { resume = false, carry = [], info, joined, overflow = false, failed, bare = false, folder = false, cutoff = false, engine = false, hard = overflow || folder || engine || cutoff } = {}) {
     const place = placeOf(agent.id)
     if (place === undefined || switches.has(agent.id) || readOnly()) return
-    const resumeOrigin = resume || place.botId === undefined ? rt.holdImOrigin?.(agent.id) : undefined
-    const job = { ...place, carry: [...carry], info, joined, resume, resumeOrigin, overflow, failed, bare, folder, engine, hard, cutoff, since: Date.now() }
+    const job = { ...place, carry: [...carry], info, joined, resume, overflow, failed, bare, folder, engine, hard, cutoff, since: Date.now() }
     switches.set(agent.id, job)
     const done = runSwitch(agent, job)
       .catch(error => {
@@ -1164,7 +1160,6 @@ export function install(rt) {
       .finally(async () => {
         switches.delete(agent.id)
         if (job.moved) {
-          if (!job.originSent) rt.dropImOrigin?.(job.resumeOrigin)
           // A move that had to put input back keeps the part marked for the restart pass.
           if (job.kept !== true) {
             delete state.switching[agent.id]
@@ -1203,7 +1198,6 @@ export function install(rt) {
           // The input is back where it was; the turn that owns it goes on at once.
           try { wake(agent) } catch {}
         })
-        if (!job.originSent) rt.dropImOrigin?.(job.resumeOrigin)
         await rt.save()
       })
       // A state write that fails here (full disk, a file another program holds, a lost lock)
@@ -1381,7 +1375,6 @@ export function install(rt) {
     if (bot === undefined) {
       ;(room.parts ??= []).push(segment)
       room.sessionId = freshId
-      if (job.resumeOrigin !== undefined) rt.peekImOrigin?.(freshId, job.resumeOrigin)
     } else if (room !== undefined) {
       room.segments ??= {}
       ;(room.segments[bot.id] ??= []).push(segment)
@@ -1920,7 +1913,7 @@ export function install(rt) {
           // the result event's seq, which the chat keys a post's anchor by.
           const item = { time: time ?? reply.time ?? event.time }
           if (turn !== undefined) item.turn = turn
-          if (reply.kind === 'user') items.push({ kind: 'user', text: reply.text, ...(reply.via ? { via: reply.via } : {}), ...item })
+          if (reply.kind === 'user') items.push({ kind: 'user', text: reply.text, ...item })
           else if (reply.kind === undefined) items.push({ kind: 'post', botId: reply.botId ?? null, name: reply.name ?? null, texts, ...(claims === undefined ? {} : { claims }), ...(changes === undefined ? {} : { changes }), ...item, ...(duration === undefined ? {} : { duration }) })
           else items.push({ kind: 'relay', reply, ...item })
         }
@@ -1933,8 +1926,7 @@ export function install(rt) {
         const imageRefs = content.filter(block => block?.type === 'image' && block.attachment !== undefined)
           .map(block => ({ attachmentId: block.attachment.attachmentId, mime: block.attachment.mediaType ?? block.attachment.mime ?? block.attachment.mimeType, name: block.attachment.name }))
         const images = content.filter(block => block?.type === 'image').length
-        const via = viaOf(source)
-        stamp(event, { kind: 'user', text: textOf(content), ...(images > 0 ? { images } : {}), ...(imageRefs.length > 0 ? { imageRefs } : {}), ...(via ? { via } : {}), time: event.time })
+        stamp(event, { kind: 'user', text: textOf(content), ...(images > 0 ? { images } : {}), ...(imageRefs.length > 0 ? { imageRefs } : {}), time: event.time })
       } else if (source?.kind === REPLY_KIND) {
         const text = textOf(event.data.content)
         const reply = readReply(text)

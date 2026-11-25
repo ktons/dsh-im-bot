@@ -6,7 +6,6 @@ import { KeyEditor, UsedBy, translated, usersOf } from './providers-page.js'
 import { modelLine } from './bot-models-page.js'
 import { modelRefOf } from './bot-model-batch.js'
 import { nextText, useSchedules } from './schedules.js'
-import { platformOf } from './im-page.js'
 import { RANGES, compact, summarize } from './usage-data.js'
 import { allThemes, effectsOf, layoutOf } from './themes.js'
 import { isLocalRoute } from './agent-routes.js'
@@ -143,10 +142,9 @@ function Tiles({ roster, actions, icons, view, hasProviders, narrow }) {
   const connectors = roster.connectors ?? {}
   const mail = connectors.mail?.accounts ?? []
   const apps = (connectors.connectors ?? []).filter(app => app.id !== 'mail' && app.state !== 'off')
-  const im = roster.im?.connections ?? []
   const phone = roster.phone ?? {}
   const phoneOnline = Boolean(phone.on && phone.status === 'online' && (phone.phones ?? []).some(entry => entry.connected))
-  const connected = mail.length + apps.length + im.length + (phoneOnline ? 1 : 0)
+  const connected = mail.length + apps.length + (phoneOnline ? 1 : 0)
 
   const capabilities = roster.capabilities ?? []
   const secrets = roster.secrets ?? []
@@ -165,7 +163,6 @@ function Tiles({ roster, actions, icons, view, hasProviders, narrow }) {
       local > 0 ? h(Chip, null, t('Local {count}', { count: local })) : null),
     h(Tile, { icon: icons.connectors, title: t('Connect'), onOpen: () => actions.openSettings('connectors'), value: connected, unit: t('connected') },
       phone.on ? h(Chip, { tone: phoneOnline ? 'ok' : null }, t('Phone')) : null,
-      uniq(im.map(conn => t(platformOf(conn.platform).name))).slice(0, 2).map(name => h(Chip, { key: `im:${name}` }, name)),
       apps.slice(0, 2).map(app => h(Chip, { key: app.id }, app.name)),
       mail.length > 0 ? h(Chip, null, t('Mailbox')) : null),
     h(Tile, { icon: icons.capabilities, title: t('Tools'), onOpen: () => actions.openSettings('computer'), value: capabilities.length, unit: t('capabilities') },

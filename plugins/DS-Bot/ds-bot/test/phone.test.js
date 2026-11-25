@@ -177,13 +177,12 @@ test('the host enforces a default-deny browser allowlist across every channel ro
     assert.equal(channelRoutes.has(endpoint), true, `allowlisted route ${endpoint} missing from channel.js`)
     assert.equal(gatedRoutes.has(endpoint), false, `gated route ${endpoint} must never be in BROWSER_ALLOWED`)
   }
-  // High-risk RCE, vault, provider, IM, mail, local-agent, computer-use, and unknown routes must be denied to browsers.
+  // High-risk RCE, vault, provider, mail, local-agent, computer-use, and unknown routes must be denied to browsers.
   const mustDenyBrowser = [
     ...gatedRoutes,
     'connector-add', 'connector-remove', 'connector-set', 'connector-import', 'connector-import-scan', 'connector-cancel',
     'secret-encrypt', 'secret-decrypt', 'secret-unlock', 'secret-store',
     'provider-models', 'provider-models-save',
-    'im-add', 'im-update', 'im-remove', 'im-pair', 'im-unpair', 'im-chat', 'im-retry', 'im-login-start', 'im-login-wait',
     'local-agents', 'local-agent-models', 'local-agent-refresh', 'local-agent-add', 'local-agent-update', 'local-agent-remove',
     'mail-account-add', 'mail-account-remove', 'mail-rule-set', 'mail-send-answer', 'mail-sign-in-code',
     ...computerRoutes,

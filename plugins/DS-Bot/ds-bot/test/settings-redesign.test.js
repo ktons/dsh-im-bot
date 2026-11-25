@@ -173,8 +173,6 @@ const baseRoster = {
   models: [{ ref: 'deepseek/deepseek-chat', name: 'DeepSeek Chat', provider: 'deepseek' }],
   prefs: { theme: 'deepseek' },
   connectors: { connectors: [], mail: { accounts: [] } },
-  im: { connections: [], platforms: [] },
-  imStatus: {},
   phone: { on: false, status: 'off', server: '', phones: [], pairing: null },
   computer: { enabled: false },
   secrets: [],
@@ -271,7 +269,6 @@ test('SettingsDialog opens on Overview, lists 9 nav groups, and scrolls domain p
       ['groups', 'Team', 'Group chats'],
       ['schedules', 'Team', 'Scheduled tasks'],
       ['connectors', 'Connect', 'Connectors'],
-      ['im', 'Connect', 'IM'],
       ['phone', 'Connect', 'Phone'],
       ['mcp', 'Connect', 'MCP access'],
       ['computer', 'Tools', 'Computer use'],
@@ -345,10 +342,10 @@ test('Settings search opens as a palette from the rail or ⌘K, finds settings, 
     tree = draw()
     assert.ok(searchInput())
 
-    // Chinese keywords reach IM.
-    type('微信')
+    // Chinese keywords reach Phone.
+    type('手机')
     assert.equal(hits().length, 1)
-    assert.match(textOf(hits()[0]), /IM/)
+    assert.match(textOf(hits()[0]), /Phone/)
 
     // IME composition Enter & Escape (isComposing and legacy keyCode 229) must not navigate or close.
     searchInput().props.onKeyDown({ key: 'Enter', isComposing: true, preventDefault() {}, stopPropagation() {} })
@@ -356,7 +353,7 @@ test('Settings search opens as a palette from the rail or ⌘K, finds settings, 
     searchInput().props.onKeyDown({ key: 'Escape', isComposing: true, preventDefault() {}, stopPropagation() {} })
     assert.deepEqual(opened, [])
     tree = draw()
-    assert.equal(searchInput().props.value, '微信')
+    assert.equal(searchInput().props.value, '手机')
 
     // Escape from outside the field closes the palette, not Settings; a second one closes Settings.
     fire({ key: 'Escape', keyCode: 27 })
@@ -593,15 +590,15 @@ test('SettingsTour replays from step 0 without unmounting, ends when search open
     assert.equal(findAll(tree, n => n.props?.className === 'bt-tour-layer').length, 0, 'opening search ends the walkthrough')
     assert.equal(store.get(TOUR_SEEN_KEY), '1', 'opening search during the full walkthrough marks it seen')
     const searchInput = () => findAll(tree, n => n.type === 'input' && n.props?.className === 'bt-set-search-input')[0]
-    searchInput().props.onChange({ target: { value: '微信' } })
+    searchInput().props.onChange({ target: { value: '手机' } })
     tree = draw()
     assert.equal(findAll(tree, n => n.type === 'button' && n.props?.className === 'bt-set-search-hit').length, 1)
 
-    // Picking a hit goes to IM and stays there.
+    // Picking a hit goes to Phone and stays there.
     searchInput().props.onKeyDown({ key: 'Enter', isComposing: false, preventDefault() {}, stopPropagation() {} })
     tree = draw()
     tree = draw()
-    assert.equal(currentPage, 'im', 'picking IM search hit must not snap back')
+    assert.equal(currentPage, 'phone', 'picking Phone search hit must not snap back')
 
     // Replay the same section guide without unmounting: advance, skip, then start again → must start at step 0.
     currentPage = 'general'

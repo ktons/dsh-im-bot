@@ -61,7 +61,6 @@ export function install(rt) {
   // Models come from DSH, not state.json, so a provider added on the Models pages of Settings
   // changes the view without a new revision.
   const modelsKey = () => `${rt.cachedCatalog().map(entry => `${entry.ref}${entry.needsKey ? '!' : ''}${entry.reasoning ? `:${JSON.stringify(entry.reasoning)}` : ''}`).join(',')}|${rt.cachedDefault() ?? ''}`
-  const publicCards = cards => Object.fromEntries(Object.entries(cards ?? {}).map(([sessionId, { imOrigin, ...card }]) => [sessionId, card]))
   const view = () => ({
     revision: state.revision,
     workspaceId: state.workspaceId ?? null,
@@ -94,8 +93,8 @@ export function install(rt) {
     // Deleted private Bots whose folder, memory and chats stay closed to the others.
     privateArchives: rt.archivesView(),
     exchangeTurns: state.exchangeTurns,
-    questions: publicCards(state.questions),
-    views: publicCards(state.views),
+    questions: state.questions,
+    views: state.views,
     closedCards: state.closedCards ?? {},
     // Aside answers of each Bot's current part, newest first. Not part of the
     // model-visible history; earlier parts send their cards on their own pages.
@@ -128,8 +127,6 @@ export function install(rt) {
     memory: rt.memoryEnabled !== false,
     // Set while another dsh host holds the team (store.js): why this one cannot change it.
     readOnly: rt.readOnly() ?? null,
-    // IM connections (settings → IM): one per chat-app bot the user added.
-    im: rt.imView?.() ?? { connections: [], platforms: [] },
     // The computer-use switch, the provider it mounts, and each Bot's level and app grants.
     computer: rt.computerView?.() ?? { enabled: false },
   })
@@ -153,8 +150,6 @@ export function install(rt) {
     capabilityStatuses: rt.capabilityStatusesView(),
     phone: rt.phoneView(),
     mcp: rt.mcpView(),
-    imStatus: rt.imStatusView?.() ?? {},
-    imVia: rt.imViaView?.() ?? {},
     // Why this host cannot write the team, or null. It changes without a save — the
     // other dsh can quit while this window stays open and this host takes the lock
     // over — so a window learns that it may write again without a reload.
@@ -825,17 +820,6 @@ export function install(rt) {
           rt.browserChannel?.setHold(botId, { by: 'user', reason: 'stopped', note: 'The user is controlling this browser.' })
           return ok(true)
         }
-        case 'im-add':
-        case 'im-update':
-        case 'im-remove':
-        case 'im-pair':
-        case 'im-unpair':
-        case 'im-chat':
-        case 'im-retry':
-        case 'im-login-start':
-        case 'im-login-wait':
-          await rt.load()
-          return ok(await rt.imEndpoint(endpoint, body))
         case 'local-agents':
         case 'local-agent-models':
         case 'local-agent-refresh':

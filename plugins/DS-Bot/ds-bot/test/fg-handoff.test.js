@@ -240,10 +240,9 @@ test('Desktop/Web user message on busy foreground moves old Session intact into 
   assert.match(report.text, /Suite passed 100%/)
 })
 
-test('Mobile/IM sendUser triggers foreground handoff after wait threshold and redirects stale sessionId', async (t) => {
+test('Mobile sendUser triggers foreground handoff after wait threshold and redirects stale sessionId', async (t) => {
   const env = await startEnv({ team: makeTeam({ prefs: { backgroundAfterSec: 2 } }) })
   t.after(env.stop)
-  env.rt.captureImOrigin = sid => (sid === 'dm-a' ? { connId: 'c1', chatKey: 'k1', senderId: 'u1', binding: 'bot:a' } : undefined)
   const dmA = env.agentMap.get('dm-a')
   dmA.status = 'running'
 
@@ -255,7 +254,6 @@ test('Mobile/IM sendUser triggers foreground handoff after wait threshold and re
   await env.rt.sendUser({ sessionId: 'dm-a', content: [{ type: 'text', text: 'Quick question from phone' }], requestId: 'req-1' })
   assert.equal(env.rt.botOf('a').sessionId, 'fork-1')
   assert.equal(env.prompts[0].sessionId, 'fork-1')
-  assert.deepEqual(env.rt.botOf('a').tasks[0].imOrigin, { connId: 'c1', chatKey: 'k1', senderId: 'u1', binding: 'bot:a' })
 
   // A second in-flight phone message still targeting stale 'dm-a' redirects to 'fork-1'.
   await env.rt.sendUser({ sessionId: 'dm-a', content: [{ type: 'text', text: 'Follow up from phone' }], requestId: 'req-2' })
@@ -402,23 +400,19 @@ test('client indexRoster indexes task sessions so mainView auto-follows new fore
   assert.equal(roster.byId['fork-1']?.id, 'a')
 })
 
-test('P0 #1/#2/#3: task-handoff before user message preserves turns.js userAnswered, historyEntry skip, and IM isolation', async (t) => {
+test('P0 #1/#2/#3: task-handoff before user message preserves turns.js userAnswered and historyEntry skip', async (t) => {
   const env = await startEnv()
   t.after(env.stop)
   let userAnsweredCount = 0
   const origUserAnswered = env.rt.userAnswered
   env.rt.userAnswered = (botId) => { userAnsweredCount += 1; return origUserAnswered?.(botId) }
-  let clearedOriginFor
-  const origClear = env.rt.clearImOrigin
-  env.rt.clearImOrigin = (sid) => { clearedOriginFor = sid; return origClear?.(sid) }
 
   const dmA = env.agentMap.get('dm-a')
   dmA.status = 'running'
   await env.emit('dm-a', 'turn/start', { turn: 1 })
   await env.emit('dm-a', 'tool/call', { callId: 'tc1', name: 'bash', arguments: '{}' })
 
-  await env.rt.sendUser({ sessionId: 'dm-a', content: [{ type: 'text', text: 'New question' }], requestId: 'req-im' })
-  assert.equal(clearedOriginFor, 'dm-a', 'moving foreground into background task must clear live IM origin on oldSid')
+  await env.rt.sendUser({ sessionId: 'dm-a', content: [{ type: 'text', text: 'New question' }], requestId: 'req-1' })
 
   const freshSid = env.rt.botOf('a').sessionId
   const fresh = env.agentMap.get(freshSid)

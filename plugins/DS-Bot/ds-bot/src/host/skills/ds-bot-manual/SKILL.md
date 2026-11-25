@@ -30,7 +30,7 @@ Only the user deletes Bots, changes Main Bot status, switches between DS Bot mod
 - [Memory and context](references/memory.md)
 - [Capabilities, connectors and secrets](references/capabilities.md)
 - [Browser and computer use](references/browser-computer.md)
-- [IM, phone and mobile access](references/remote-access.md)
+- [Phone and mobile access](references/remote-access.md)
 - [Schedules and background tasks](references/tasks.md)
 - [Approvals and permissions](references/permissions.md)
 - [Settings reference](references/settings.md)
