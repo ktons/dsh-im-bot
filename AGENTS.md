@@ -9,14 +9,14 @@
 |------|------|-------------|----------|
 | `dsh/`（submodule） | DeepSeek Harness 主仓（pnpm monorepo） | 上游 `https://github.com/deepseek-ai/deepseek-harness.git`（只读，不 fork） | 分支 `stable` ← tag `dsh-v0.2.2-rc.5`（`9c2670d3`） |
 | `plugins/dsh-im/` | IM 接入插件（微信/飞书/TG 等→DSH） | 源码快照，无 git | 上游 xmanrui/dsh-im `v5.10.0`（`c826bfa`），2026-11-23 收编 |
-| `plugins/DS-Bot/` | DS-Bot 插件集（`ds-bot` + `link`） | 源码快照，无 git | 上游 Fei2411/DS-Bot `v0.3.10`（`d104d9c`），2026-11-23 收编 |
+| `plugins/DS-Bot/` | DS-Bot 插件集（`ds-bot` + `link`） | 源码快照，无 git | 上游 Fei2411/DS-Bot `v0.3.10`（`d104d9c`），2026-11-23 收编；**2026-11-25 起本地大改已分歧**（P1 ask_user 退役、P2 IM 层废除，见 `docs/ds-bot-roadmap.md`） |
 | `bin/` | 已部署的桌面端产物（绿色版，1.1GB） | 不入库，可由 `deploy-dsh-bin.ps1` 重建 | dsh v0.2.2-rc.5，win-x64，未签名 unpacked（2026-11-23 部署验证） |
 
 插件上游出处与"不再跟上游"的一次性声明见根 `README.md`。
 
 ### plugins/DS-Bot 内部
 
-- `ds-bot/` → 插件 `ds-bot` v0.3.10（Bot 团队/群聊/记忆）：`client.js` 为随 tag 提交的预构建产物，只有改源码才需构建。安装/升级插件的流程与排障见 skill：**dsh-plugin-install**。
+- `ds-bot/` → 插件 `ds-bot` v0.3.10（Bot 团队/群聊/记忆）：`client.js` 为**本地构建产物**（2026-11-25 T5 重建，已不等于上游 tag 产物），只有改源码才需构建，改 `src/client/` 必须重建并同提交入库。安装/升级插件的流程与排障见 skill：**dsh-plugin-install**。
 - `link/` → 插件 `ds-bot-link` v0.1.0（版本独立，落后于主插件）。
 
 ### 遗留物
