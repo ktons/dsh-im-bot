@@ -107,6 +107,7 @@ v0.3.10 快照已核实 `ask_user`/`show_view`/prompt 三处俱全（旧 fork �
 
 | 日期 | 任务 | 轮次 | 结果 | 测试 | 备注 |
 |---|---|---|---|---|---|
+| 2026-11-25 | 测试噪声清理（收口后用户指示） | 1 | done | `npm test` 两轮稳定 3494/3485 pass / **0 fail** / 9 skipped；lint 0 errors | 删环境性失败测试：link-bundle/phone 整文件 + mobile markdown-image EPERM 块 + malformed-response 2 个 flake 块（−478 行，数字对账 3499−5=3494 吻合）；commit `e8f4065` |
 | 2026-11-25 | T7 桌面端重启验证 | 1 | done | 激活三证据：`bot/state.lock` 心跳 + `integrations/dsh-im` sqlite 打开 + web 端点 56566 HTTP 401 | 用户授权空闲即重启；sessions 近 15min 零改动判定空闲；taskkill 温和→强制→start-dsh；窗口截图确认工作区加载正常；控制台 third_party ERROR 判良性启动噪音 |
 | 2026-11-25 | 终审（独立只读 reviewer） | 1 | 全绿可收口 | `npm test` 两轮复跑稳定 3485/3499（5 挂全在白名单）；lint 0 errors；`--check` OK | 7 项检查全过：残留扫查 0 命中、保留面端点在位、桥方向无跨包 import、文档 IM 段清零、仓库卫生（仅 roadmap 一处 M）；P2 一条（AGENTS.md client.js 陈述过时）随 T8 修正 |
 | 2026-11-25 | P1 欠账：ask_user 遗留测试退役 | 1 | done | 全量 3499/3485 pass（8−3 确定性 TypeError 清零，余 5 挂均已知环境/flake） | questions/mobile 改 state 直注入 + `cardShown` 造数（测的是仍存活的 closeCard/notices 管线）；commit `351b62a` |
