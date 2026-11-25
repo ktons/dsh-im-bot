@@ -33,6 +33,7 @@
 ## 桌面端构建与部署（准则）
 
 - 桌面端为 release 级**未签名 unpacked** 构建；产物经 `deploy-dsh-bin.ps1` 同步进 `bin/`，启动用 `start-dsh.cmd` / `start-dsh.ps1` 或直接双击 `bin\DeepSeek Harness.exe`（应用自包含、不依赖 CWD、单实例锁）。
+- 插件迭代（改 `plugins/`）不涉及 bin/ 重打包：link 方式安装的插件改源码（必要时重建 `client.js`）后重启桌面端即生效；只有 dsh 本体升级（dsh-release-bump）才需要重建部署。
 - 打包、部署、验证、排障的完整操作见 skill：**dsh-desktop-release**；**升级/换版本后重建前必先清过期编译缓存**（该 skill 第 0 节），否则 tsc 门读旧 `lib` 产物报假错。
 - 温启动实测基线：窗口 ~2.1s，工作区可用 ~2.7s。
 
