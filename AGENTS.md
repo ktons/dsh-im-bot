@@ -48,7 +48,7 @@
 ## 迭代约定
 
 1. dsh 以 **release tag 为基线**：`stable` 从 tag 创建；升级 = fetch 新 tag → `git switch -C stable refs/tags/<新tag>` → 超仓 `git add dsh` 更新 gitlink → 超仓提交推送。**gitlink 只能指向上游可达的提交**——确需本地修补 dsh 时（如打包门禁修复），在 `stable` 上本地提交并在此记录 hash，gitlink 仍钉在上游 tag 提交。插件为源码快照，没有"跟上游升级"概念，大改直接在本仓提交。
-2. dsh 升级流程见 skill：**dsh-release-bump**；桌面端构建/部署/排障见 skill：**dsh-desktop-release**；插件安装见 skill：**dsh-plugin-install**（均位于工作区 `.agents/skills/`，跨 agent 通用）。
+2. dsh 升级流程见 skill：**dsh-release-bump**；桌面端构建/部署/排障见 skill：**dsh-desktop-release**；插件安装见 skill：**dsh-plugin-install**；dsh-im 飞书过程卡视觉迭代/离线预览见 skill：**dsh-im-card-preview**（均位于工作区 `.agents/skills/`，跨 agent 通用）。
 3. 完成一次状态变更（换版本、重打包、迁移目录）后，**更新本文件的快照表**，保持记录新鲜。
 4. **Git 纪律**：每产生一段稳定内容（文档、脚本、skill、可用的新流程）就 `git commit`；**push 必须等用户明确号令，未经指令不得自行 push**（远程 `ktons/dsh-im-bot`，私有仓）。`bin/`、`.downloads/` 已 ignore 不入库。
 5. 各插件安装进桌面端走 GUI（设置 → 插件）或 `dsh plugin --profile desktop add`；桌面端 profile 位于标准 Harness home 的 `profiles/desktop`（开发模式 dev:desktop 则在 `apps/desktop/.desktop-build/development/home`，两者隔离）。
