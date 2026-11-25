@@ -1,21 +1,22 @@
 // 飞书"任务过程"流式卡片的离线预览生成器。
 //
-// 直接 import 生产代码里的 stepStreamCard，生成各状态的卡片 JSON，再产出一个
-// 自包含的 preview.html（内置迷你渲染器 + 近似飞书样式 + 动画帧轮播）。
-// 用途：卡片视觉迭代（动画帧序、usage footer、面板折叠默认态）不经过飞书
-// API，本地浏览器里定稿后再上真机验收。用法见工作区 skill：dsh-im-card-preview。
+// 直接 import 生产代码所用的同一套卡片 JSON 形态，生成定稿设计的各状态卡片，
+// 产出自包含的 preview.html（内置迷你渲染器 + 近似飞书样式 + 动画帧轮播）。
+// 用法见工作区 skill：dsh-im-card-preview。
 //
 //   node scripts/step-card-preview.mjs            # 生成 .preview/step-card-preview.html
 //
-// 变体（spinner/footer）是对卡片 JSON 的后处理提案（PROPOSAL），定稿后应把选中的
-// 变体实现进 stepStreamCard 本体；届时预览会自动渲染新实现，提案层可保留做对比。
+// 2026-11-25 拍板的定稿设计（finalCard 在此模拟，实现进 stepStreamCard 后由
+// 生产函数直接出这些 JSON，本文件的 finalCard 届时退役）：
+//   - 无大标题外壳（去掉蓝色 template header，整卡简约）
+//   - 同类过程块合并：整 turn 只有一个 🛠️ 工具摘要、一个 💭 思考过程，默认收起
+//   - 运行态状态行动画 A："运行中 · / · · / · · ·" 点数渐增
+//   - 完成态不重排（不再并入"过程详情"wrapper），只换状态行 + F3 usage footer
+//   - F3 footer：独立代码行 `模型 X · 输入 N（缓存 M）· 输出 K`
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-
-import { stepStreamCard } from '../src/channels/feishu/feishu-cards.mjs';
-import { normalizeFeishuStepCardPanels } from '../src/channels/feishu/step-push-mode.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = path.join(ROOT, '.preview');
@@ -51,120 +52,82 @@ const ANSWER_MD = [
   '详情见附件，或回复 “继续” 展开全部明细。',
 ].join('\n');
 
-// ── 提案变体（PROPOSAL：定稿后实现进 stepStreamCard 本体） ─────────────────
-
-const STATUS_LINE = /^_(运行中|已完成|已停止|已结束)_$/;
-
-function statusIndex(elements) {
-  return elements.findIndex((el) => el?.tag === 'markdown' && STATUS_LINE.test(el.content ?? ''));
-}
+// ── 定稿渲染（模拟实现进 stepStreamCard 后的产出） ─────────────────────────
 
 const fmtK = (n) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 const fmtGroup = (n) => n.toLocaleString('en-US');
 
-/** 动画变体：作用于"运行中"卡片。 */
-const SPINNERS = {
-  A: {
-    label: 'A · 状态行点数渐增',
-    cycle: 3,
-    apply(card, frame) {
-      const el = card.body.elements[statusIndex(card.body.elements)];
-      if (!el) return;
-      const dots = ['·', '· ·', '· · ·'][frame % 3];
-      el.content = `_运行中 ${dots}_`;
+function collapsedPanel(title, lines) {
+  return {
+    tag: 'collapsible_panel',
+    expanded: false,
+    background_color: 'grey-50',
+    border: { color: 'grey', corner_radius: '8px' },
+    padding: '8px 8px 8px 8px',
+    header: {
+      title: { tag: 'plain_text', content: title },
+      vertical_align: 'center',
+      padding: '8px 8px 8px 8px',
+      icon: { tag: 'standard_icon', token: 'down-small-ccm_outlined', color: 'grey', size: '16px 16px' },
+      icon_position: 'right',
+      icon_expanded_angle: -180,
     },
-  },
-  B: {
-    label: 'B · 尾行亮点轮播',
-    cycle: 3,
-    apply(card, frame) {
-      const wave = ['**●** ○ ○', '○ **●** ○', '○ ○ **●**'][frame % 3];
-      card.body.elements.push({ tag: 'markdown', content: `_${wave}_` });
-    },
-  },
-  C: {
-    label: 'C · 尾行进度条',
-    cycle: 4,
-    apply(card, frame) {
-      const bar = ['▱▱▱', '▰▱▱', '▰▰▱', '▰▰▰'][frame % 4];
-      card.body.elements.push({ tag: 'markdown', content: `_${bar}_` });
-    },
-  },
-};
+    elements: [{ tag: 'markdown', content: lines.join('\n') }],
+  };
+}
 
-/** usage footer 变体：作用于"已完成"卡片。 */
-const FOOTERS = {
-  F1: {
-    label: 'F1 · 并入状态行',
-    apply(card, usage) {
-      const el = card.body.elements[statusIndex(card.body.elements)];
-      if (!el) return;
-      el.content = `_已完成 · ${usage.model} · ↑${fmtK(usage.inputTokens)} ↓${fmtK(usage.outputTokens)}_`;
-    },
-  },
-  F2: {
-    label: 'F2 · 独立代码行',
-    apply(card, usage) {
-      card.body.elements.push({
-        tag: 'markdown',
-        content: `\`模型 ${usage.model} · 输入 ${fmtGroup(usage.inputTokens)} · 输出 ${fmtGroup(usage.outputTokens)}\``,
-      });
-    },
-  },
-  F3: {
-    label: 'F3 · 独立代码行 + 缓存桶',
-    apply(card, usage) {
-      card.body.elements.push({
-        tag: 'markdown',
-        content: `\`模型 ${usage.model} · 输入 ${fmtGroup(usage.inputTokens)}（缓存 ${fmtGroup(usage.cacheReadTokens)}）· 输出 ${fmtGroup(usage.outputTokens)}\``,
-      });
-    },
-  },
-};
-
-/** 深拷贝 + 变体后处理，返回 JSON 字符串（与生产路径同一序列化形态）。 */
-function cardJson(blocks, { status, stepCardPanels } = {}, transform) {
-  const card = JSON.parse(stepStreamCard(blocks, {
-    status,
-    stepCardPanels: normalizeFeishuStepCardPanels(stepCardPanels),
-  }));
-  transform?.(card);
-  return JSON.stringify(card);
+/**
+ * 定稿卡片：无 header 外壳；answer 内容在上；同类过程块各合并成一个收起面板；
+ * 状态行在最尾（运行态即动画 A 载体）；完成/停止态追加 F3 usage 代码行。
+ * 与生产 stepStreamCard 的关键差异（实现时落地）：header 移除、跨块合并面板、
+ * 完成态不再并入"过程详情"wrapper、usage 由 finishStepCard 传入。
+ */
+function finalCard(blocks, { status = 'running', frame = 0, usage = null } = {}) {
+  const elements = [];
+  const toolLines = [];
+  const noteLines = [];
+  for (const block of Array.isArray(blocks) ? blocks : []) {
+    const lines = (Array.isArray(block?.lines) ? block.lines : []).filter((line) => typeof line === 'string' && line.trim());
+    if (block?.kind === 'tools') toolLines.push(...lines);
+    else if (block?.kind === 'notes') noteLines.push(...lines);
+    else {
+      const text = typeof block?.text === 'string' ? block.text.trim() : '';
+      if (text) elements.push({ tag: 'markdown', content: text });
+    }
+  }
+  const omitted = Number(blocks?.omitted) || 0;
+  if (toolLines.length) elements.push(collapsedPanel(`🛠️ 工具摘要（${toolLines.length}）`, toolLines));
+  if (noteLines.length) elements.push(collapsedPanel(`💭 思考过程（${noteLines.length}）`, noteLines));
+  if (elements.length === 0 && status === 'running') {
+    // 空内容占位：真机渲染空 markdown 会塌掉，塞一个空白行保住卡片高度。
+    elements.push({ tag: 'markdown', content: ' ' });
+  }
+  if (status === 'running') {
+    elements.push({ tag: 'markdown', content: `_运行中 ${['·', '· ·', '· · ·'][frame % 3]}_` });
+  } else {
+    elements.push({ tag: 'markdown', content: status === 'completed' ? '_已完成_' : '_已停止_' });
+    if (usage) {
+      elements.push({ tag: 'markdown', content: `\`模型 ${usage.model} · 输入 ${fmtGroup(usage.inputTokens)}（缓存 ${fmtGroup(usage.cacheReadTokens)}）· 输出 ${fmtGroup(usage.outputTokens)}\`` });
+    }
+  }
+  // 定稿：无 header；schema 2.0 允许省略 header，飞书按无标题卡渲染。
+  return JSON.stringify({ schema: '2.0', body: { elements } });
 }
 
 // ── 页面数据组装 ───────────────────────────────────────────────────────────
 
-const CURRENT_PANELS = { toolsExpanded: true };
-const PROPOSED_PANELS = { toolsExpanded: false, thinkingExpanded: false };
+const fullTurnBlocks = [...demoBlocks(), { kind: 'message', text: ANSWER_MD }];
 
-const sections = {
-  baseline: {
-    running: cardJson(demoBlocks(), { status: 'running', stepCardPanels: CURRENT_PANELS }),
-    completed: cardJson([{ kind: 'message', text: ANSWER_MD }], { status: 'completed' }),
-    stopped: cardJson(demoBlocks(), { status: 'stopped', stepCardPanels: CURRENT_PANELS }),
-  },
-  spinners: Object.fromEntries(Object.entries(SPINNERS).map(([key, spinner]) => [key, {
-    label: spinner.label,
-    cycle: spinner.cycle,
-    frames: Array.from({ length: spinner.cycle }, (_, frame) => cardJson(
-      demoBlocks(),
-      { status: 'running', stepCardPanels: CURRENT_PANELS },
-      (card) => spinner.apply(card, frame),
-    )),
-  }])),
-  footers: Object.fromEntries(Object.entries(FOOTERS).map(([key, footer]) => [key, {
-    label: footer.label,
-    card: cardJson([{ kind: 'message', text: ANSWER_MD }], { status: 'completed' }, (card) => footer.apply(card, DEMO_USAGE)),
-  }])),
-  fold: {
-    current: cardJson(demoBlocks(), { status: 'running', stepCardPanels: CURRENT_PANELS }),
-    proposed: cardJson(demoBlocks(), { status: 'running', stepCardPanels: PROPOSED_PANELS }),
-  },
+const design = {
+  fresh: Array.from({ length: 3 }, (_, frame) => finalCard([], { status: 'running', frame })),
+  running: Array.from({ length: 3 }, (_, frame) => finalCard(demoBlocks(), { status: 'running', frame })),
+  completed: finalCard(fullTurnBlocks, { status: 'completed', usage: DEMO_USAGE }),
+  stopped: finalCard(fullTurnBlocks, { status: 'stopped' }),
 };
 
 // ── 迷你渲染器 + 页面模板 ──────────────────────────────────────────────────
-// 渲染器覆盖 stepStreamCard 实际会产出的子集：markdown（表格/围栏/列表/引用/
-// 标题/行内格式）+ collapsible_panel + hr。仅用于预览，最终效果以飞书客户端为准。
+// 渲染器覆盖卡片实际会产出的子集：markdown（表格/围栏/列表/引用/标题/行内格式）
+// + collapsible_panel + hr。仅用于预览，最终效果以飞书客户端为准。
 
 const RENDERER_JS = String.raw`
 function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
@@ -275,7 +238,10 @@ function renderPanel(el) {
 function renderCard(json) {
   let card;
   try { card = JSON.parse(json); } catch { return '<div class="fx-card fx-broken">JSON 解析失败</div>'; }
-  let html = '<div class="fx-card"><div class="fx-header">' + esc(card.header?.title?.content ?? '') + '</div><div class="fx-body">';
+  const title = card.header?.title?.content ?? '';
+  let html = '<div class="fx-card">';
+  if (title) html += '<div class="fx-header">' + esc(title) + '</div>';
+  html += '<div class="fx-body">';
   for (const el of card.body?.elements ?? []) {
     if (el.tag === 'markdown') html += renderMarkdown(el.content);
     else if (el.tag === 'collapsible_panel') html += renderPanel(el);
@@ -344,23 +310,14 @@ const html = `<!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>飞书任务过程卡 · 离线预览</title>
+<title>飞书任务过程卡 · 定稿预览</title>
 <style>${PAGE_CSS}</style>
 </head>
 <body>
-<h1>飞书“任务过程”流式卡片 · 离线预览</h1>
-<p class="note">由 scripts/step-card-preview.mjs 生成，数据来自生产代码 stepStreamCard() 的真实输出；提案变体为 JSON 后处理，仅用于对比。渲染为近似样式，最终效果以飞书客户端为准。</p>
+<h1>飞书“任务过程”流式卡片 · 定稿预览</h1>
+<p class="note">2026-11-25 拍板：动画 A（状态行点数渐增）· usage F3（代码行 + 缓存桶）· 面板默认收起 · 同类面板合并 · 去掉大标题外壳 · 完成态不再重排。数据形态为定稿设计（实现进生产 stepStreamCard 后即此输出）。渲染为近似样式，最终以飞书客户端为准。</p>
 
-<h2>① 基线（当前线上代码原样输出）</h2>
-<p class="note">运行中 / 已完成 / 已停止。注意基线运行态是静止的（这正是要改进的点）。</p>
-<div class="row">
-  <div class="col"><h3>运行中</h3>${cardBlockHtml('base-running', sections.baseline.running)}</div>
-  <div class="col"><h3>已完成</h3>${cardBlockHtml('base-completed', sections.baseline.completed)}</div>
-  <div class="col"><h3>已停止</h3>${cardBlockHtml('base-stopped', sections.baseline.stopped)}</div>
-</div>
-
-<h2>② 动画变体对比（提案，1 帧 = 1 次 patch）</h2>
-<p class="note">预览的间隔应设为与线上一致：STEP_STREAM_PATCH_MIN_INTERVAL_MS = 1000ms。低于 1s 的节奏真机做不到（patch 节流）。</p>
+<h2>四个状态（运行中的两张卡随播放器轮播帧）</h2>
 <div class="controls">
   <button id="play" class="playing">暂停</button>
   <label>帧间隔 <select id="interval">
@@ -371,54 +328,40 @@ const html = `<!doctype html>
   <span id="tick-display" style="color:#6b7280"></span>
 </div>
 <div class="row">
-${Object.entries(sections.spinners).map(([key, spinner]) => `
-  <div class="col"><h3>${spinner.label}</h3>
-    <div class="fx-mount" data-spinner="${key}"></div>
+  <div class="col"><h3>刚开卡 · 空内容（对应 eager-open 提案）</h3>
+    <div class="fx-mount" id="st-fresh"></div>
     <div class="fx-json-bar"><details><summary>逐帧 JSON</summary>
-      ${spinner.frames.map((frame, index) => `<details><summary>帧 ${index}</summary><pre>${escapeHtml(frame)}</pre></details>`).join('')}
+      ${design.fresh.map((frame, index) => `<details><summary>帧 ${index}</summary><pre>${escapeHtml(frame)}</pre></details>`).join('')}
     </details></div>
-  </div>`).join('')}
+  </div>
+  <div class="col"><h3>运行中（动画 A）</h3>
+    <div class="fx-mount" id="st-running"></div>
+    <div class="fx-json-bar"><details><summary>逐帧 JSON</summary>
+      ${design.running.map((frame, index) => `<details><summary>帧 ${index}</summary><pre>${escapeHtml(frame)}</pre></details>`).join('')}
+    </details></div>
+  </div>
 </div>
-
-<h2>③ usage footer 变体对比（提案，封存时展示）</h2>
-<p class="note">示例数据：模型 ${DEMO_USAGE.model} · 输入 ${fmtGroup(DEMO_USAGE.inputTokens)}（缓存 ${fmtGroup(DEMO_USAGE.cacheReadTokens)}）· 输出 ${fmtGroup(DEMO_USAGE.outputTokens)}。</p>
 <div class="row">
-${Object.entries(sections.footers).map(([key, footer]) => `
-  <div class="col"><h3>${footer.label}</h3>${cardBlockHtml('footer-' + key, footer.card)}</div>`).join('')}
-</div>
-
-<h2>④ 面板折叠默认态对比（运行中）</h2>
-<p class="note">左 = 当前默认（工具摘要展开）；右 = 提案默认（全部收起，点开才见）。完成态两边都会并入收起的"过程详情"，无差异。</p>
-<div class="row">
-  <div class="col"><h3>当前默认（toolsExpanded: true）</h3>${cardBlockHtml('fold-current', sections.fold.current)}</div>
-  <div class="col"><h3>提案默认（toolsExpanded: false）</h3>${cardBlockHtml('fold-proposed', sections.fold.proposed)}</div>
+  <div class="col"><h3>已完成（+ F3 usage footer）</h3>${cardBlockHtml('st-completed', design.completed)}</div>
+  <div class="col"><h3>已停止</h3>${cardBlockHtml('st-stopped', design.stopped)}</div>
 </div>
 
 <script>${RENDERER_JS}</script>
 <script>
-const DATA = ${jsonEmbed({ spinners: sections.spinners })};
-
-function mount(id, json) { const el = document.getElementById(id); if (el) el.innerHTML = renderCard(json); }
-
-mount('base-running', ${jsonEmbed(sections.baseline.running)});
-mount('base-completed', ${jsonEmbed(sections.baseline.completed)});
-mount('base-stopped', ${jsonEmbed(sections.baseline.stopped)});
-mount('fold-current', ${jsonEmbed(sections.fold.current)});
-mount('fold-proposed', ${jsonEmbed(sections.fold.proposed)});
-${Object.entries(sections.footers).map(([key]) => `mount('footer-${key}', ${jsonEmbed(sections.footers[key].card)});`).join('\n')}
+const FRAMES = ${jsonEmbed({ fresh: design.fresh, running: design.running })};
 
 let tick = 0;
 let timer = null;
-function renderSpinners() {
-  for (const el of document.querySelectorAll('[data-spinner]')) {
-    const spinner = DATA.spinners[el.dataset.spinner];
-    el.innerHTML = renderCard(spinner.frames[tick % spinner.cycle]);
-  }
-  document.getElementById('tick-display').textContent = '帧 ' + (tick % 4) + '（tick ' + tick + '）';
+function renderAnimated() {
+  document.getElementById('st-fresh').innerHTML = renderCard(FRAMES.fresh[tick % FRAMES.fresh.length]);
+  document.getElementById('st-running').innerHTML = renderCard(FRAMES.running[tick % FRAMES.running.length]);
+  document.getElementById('tick-display').textContent = '帧 ' + (tick % 3) + '（tick ' + tick + '）';
 }
+document.getElementById('st-completed').innerHTML = renderCard(${jsonEmbed(design.completed)});
+document.getElementById('st-stopped').innerHTML = renderCard(${jsonEmbed(design.stopped)});
 function startTimer() {
   const interval = Number(document.getElementById('interval').value);
-  timer = setInterval(() => { tick += 1; renderSpinners(); }, interval);
+  timer = setInterval(() => { tick += 1; renderAnimated(); }, interval);
 }
 document.getElementById('interval').addEventListener('change', () => {
   clearInterval(timer); if (document.getElementById('play').classList.contains('playing')) startTimer();
@@ -428,7 +371,7 @@ document.getElementById('play').addEventListener('click', (event) => {
   if (button.classList.contains('playing')) { clearInterval(timer); button.classList.remove('playing'); button.textContent = '播放'; }
   else { startTimer(); button.classList.add('playing'); button.textContent = '暂停'; }
 });
-renderSpinners();
+renderAnimated();
 startTimer();
 
 document.addEventListener('click', (event) => {

@@ -47,9 +47,22 @@ node scripts/step-card-preview.mjs     # 生成 .preview/step-card-preview.html�
 
 dsh 本体不用改：session 事件流的 `assistant/message` 事件自带 `usage`（inputTokens/outputTokens/totalTokens/cacheRead…）和 `message.source.model/provider`（dsh `packages/core/session/src/types.ts` ≈341-356）。`turn/end` 事件**不带** usage。断点在插件侧 `src/channels/shared/harness-client.mjs` 的 `HarnessReplyTracker.consumeAll`（≈:791-816）——它消费 `assistant/message` 只取文本。最小实现：tracker 对本 turn 的 `assistant/message` 累加 usage、记下最后的 `source.model`，`#ask` 结果带出 → `workspace-session.mjs` 的 `{ answer, artifacts }` 加 `usage` → 飞书 ask 路径传给 `#finishStepCard` → `stepStreamCard` 渲染。多步 turn 逐条累加；子任务内部（若有）不经主 session 事件流，不在统计内。
 
-## 已知约束与待裁决项（2026-11-25）
+## 定稿设计（2026-11-25 用户拍板）与实现清单
+
+预览页已按定稿重构（`finalCard()` 模拟产出；实现进生产后该函数退役）：
+
+- **动画 = A 变体**：状态行点数渐增 `_运行中 · / · · / · · ·_` 循环，状态行即动画载体、置于卡片最尾；帧间隔受 patch 节流 1s 上限
+- **usage footer = F3 变体**：独立代码行 `` `模型 X · 输入 N（缓存 M）· 输出 K` ``，完成态追加；"已停止"是否也带未裁决
+- **面板默认收起**：`DEFAULT_FEISHU_STEP_CARD_PANELS.toolsExpanded: true → false`
+- **同类过程块合并**：整 turn 只渲染一个 🛠️ 工具摘要、一个 💭 思考过程（跨 message 块合并，替代现行"仅相邻同 kind 合并"）
+- **外壳去头**：卡片不再带 `header`（蓝色 template 标题带移除，无标题简约卡）
+- **完成态不重排**：移除完成时的"过程详情"wrapper 合并逻辑，保持流式布局，只换状态行 + 追加 footer
+
+实现落点：`feishu-cards.mjs` `stepStreamCard()`（面板合并/去头/状态行/）+ `step-push-mode.mjs`（默认收起）+ `bridge.mjs`（动画帧驱动器 + `#finishStepCard` 传 usage）。动画帧必须逐帧改变 JSON，否则被 `renderedCardContents` 去重跳过。
+
+## 已知约束与待裁决项
 
 - 动画 = 空闲期定时 patch（1 帧/秒），长任务持续消耗 patch 配额（10 分钟 ≈ 600 次/turn）；并发多任务按应用级 QPS 累计，可降为 2s/帧。
-- 卡片目前**首个 update 才创建**——用户发消息到首个事件前没有卡，也就没有动画可看。要覆盖空窗期需改为 turn 开始即开卡（eager open），代价是每 turn 必产出一条卡片消息；是否做未裁决。
-- usage footer 只在封存态出现（运行中拿不到）；"已停止"也可带已消耗部分。
-- 2026-11-25 已用预览页核对过 A（状态行点数渐增）/B（尾行亮点轮播）/C（尾行进度条）× F1/F2/F3 全部变体渲染正常，待用户拍板选型。
+- 卡片目前**首个 update 才创建**——用户发消息到首个事件前没有卡，也就没有动画可看。要覆盖空窗期需改为 turn 开始即开卡（eager open），代价是每 turn 必产出一条卡片消息；是否做未裁决（预览页含"刚开卡"空内容状态示例）。
+- usage footer 只在封存态出现（运行中拿不到）。
+- patch 语义是 HTTPS `im.v1.message.patch` 每帧上传整卡 JSON（非增量、非 WS）；飞书侧另有应用级频控。
