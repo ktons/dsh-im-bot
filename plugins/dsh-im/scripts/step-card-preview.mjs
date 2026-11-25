@@ -77,13 +77,14 @@ function collapsedPanel(title, lines) {
 }
 
 /**
- * 定稿卡片：无 header 外壳；answer 内容在上；同类过程块各合并成一个收起面板；
- * 状态行在最尾（运行态即动画 A 载体）；完成/停止态追加 F3 usage 代码行。
- * 与生产 stepStreamCard 的关键差异（实现时落地）：header 移除、跨块合并面板、
- * 完成态不再并入"过程详情"wrapper、usage 由 finishStepCard 传入。
+ * 定稿卡片：纤薄无色标题（不带蓝色 template 色带）；思考/工具面板置顶且各合并
+ * 为一个收起面板；answer 内容随后；状态行在最尾（运行态即动画 A 载体）；
+ * 完成/停止态追加 F3 usage 代码行。
+ * 与生产 stepStreamCard 的关键差异（实现时落地）：header 去 template 色、
+ * 跨块合并面板并置顶、完成态不再并入"过程详情"wrapper、usage 由 finishStepCard 传入。
  */
 function finalCard(blocks, { status = 'running', frame = 0, usage = null } = {}) {
-  const elements = [];
+  const messages = [];
   const toolLines = [];
   const noteLines = [];
   for (const block of Array.isArray(blocks) ? blocks : []) {
@@ -92,12 +93,13 @@ function finalCard(blocks, { status = 'running', frame = 0, usage = null } = {})
     else if (block?.kind === 'notes') noteLines.push(...lines);
     else {
       const text = typeof block?.text === 'string' ? block.text.trim() : '';
-      if (text) elements.push({ tag: 'markdown', content: text });
+      if (text) messages.push({ tag: 'markdown', content: text });
     }
   }
-  const omitted = Number(blocks?.omitted) || 0;
-  if (toolLines.length) elements.push(collapsedPanel(`🛠️ 工具摘要（${toolLines.length}）`, toolLines));
+  const elements = [];
   if (noteLines.length) elements.push(collapsedPanel(`💭 思考过程（${noteLines.length}）`, noteLines));
+  if (toolLines.length) elements.push(collapsedPanel(`🛠️ 工具摘要（${toolLines.length}）`, toolLines));
+  elements.push(...messages);
   if (elements.length === 0 && status === 'running') {
     // 空内容占位：真机渲染空 markdown 会塌掉，塞一个空白行保住卡片高度。
     elements.push({ tag: 'markdown', content: ' ' });
@@ -110,8 +112,12 @@ function finalCard(blocks, { status = 'running', frame = 0, usage = null } = {})
       elements.push({ tag: 'markdown', content: `\`模型 ${usage.model} · 输入 ${fmtGroup(usage.inputTokens)}（缓存 ${fmtGroup(usage.cacheReadTokens)}）· 输出 ${fmtGroup(usage.outputTokens)}\`` });
     }
   }
-  // 定稿：无 header；schema 2.0 允许省略 header，飞书按无标题卡渲染。
-  return JSON.stringify({ schema: '2.0', body: { elements } });
+  // 纤薄标题：header 不带 template 字段时飞书按无色标题带渲染。
+  return JSON.stringify({
+    schema: '2.0',
+    header: { title: { tag: 'plain_text', content: '任务过程' } },
+    body: { elements },
+  });
 }
 
 // ── 页面数据组装 ───────────────────────────────────────────────────────────
@@ -240,7 +246,7 @@ function renderCard(json) {
   try { card = JSON.parse(json); } catch { return '<div class="fx-card fx-broken">JSON 解析失败</div>'; }
   const title = card.header?.title?.content ?? '';
   let html = '<div class="fx-card">';
-  if (title) html += '<div class="fx-header">' + esc(title) + '</div>';
+  if (title) html += '<div class="fx-header' + (card.header?.template ? '' : ' plain') + '">' + esc(title) + '</div>';
   html += '<div class="fx-body">';
   for (const el of card.body?.elements ?? []) {
     if (el.tag === 'markdown') html += renderMarkdown(el.content);
@@ -268,6 +274,8 @@ p.note { margin: 0 0 16px; color: #6b7280; font-size: 12.5px; }
 .fx-card { background: #fff; border: 1px solid #e2e6ee; border-radius: 10px; overflow: hidden;
   box-shadow: 0 1px 3px rgba(31, 35, 41, .08); }
 .fx-header { padding: 10px 16px; background: #eff4ff; color: #3370ff; font-weight: 600; font-size: 14px; }
+.fx-header.plain { background: #fff; color: #1f2329; font-weight: 600; font-size: 13px; padding: 10px 16px 8px;
+  border-bottom: 1px solid #f0f2f5; }
 .fx-body { padding: 12px 16px 14px; }
 .fx-body > :first-child { margin-top: 0; } .fx-body > :last-child { margin-bottom: 0; }
 .fx-body p { margin: 6px 0; }
@@ -315,7 +323,7 @@ const html = `<!doctype html>
 </head>
 <body>
 <h1>飞书“任务过程”流式卡片 · 定稿预览</h1>
-<p class="note">2026-11-25 拍板：动画 A（状态行点数渐增）· usage F3（代码行 + 缓存桶）· 面板默认收起 · 同类面板合并 · 去掉大标题外壳 · 完成态不再重排。数据形态为定稿设计（实现进生产 stepStreamCard 后即此输出）。渲染为近似样式，最终以飞书客户端为准。</p>
+<p class="note">2026-11-25 拍板：动画 A（状态行点数渐增）· usage F3（代码行 + 缓存桶）· 面板默认收起 · 同类面板合并并置顶（思考过程 → 工具摘要 → 正文）· 纤薄无色标题 · 完成态不再重排。数据形态为定稿设计（实现进生产 stepStreamCard 后即此输出）。渲染为近似样式，最终以飞书客户端为准。</p>
 
 <h2>四个状态（运行中的两张卡随播放器轮播帧）</h2>
 <div class="controls">

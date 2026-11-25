@@ -54,8 +54,8 @@ dsh 本体不用改：session 事件流的 `assistant/message` 事件自带 `usa
 - **动画 = A 变体**：状态行点数渐增 `_运行中 · / · · / · · ·_` 循环，状态行即动画载体、置于卡片最尾；帧间隔受 patch 节流 1s 上限
 - **usage footer = F3 变体**：独立代码行 `` `模型 X · 输入 N（缓存 M）· 输出 K` ``，完成态追加；"已停止"是否也带未裁决
 - **面板默认收起**：`DEFAULT_FEISHU_STEP_CARD_PANELS.toolsExpanded: true → false`
-- **同类过程块合并**：整 turn 只渲染一个 🛠️ 工具摘要、一个 💭 思考过程（跨 message 块合并，替代现行"仅相邻同 kind 合并"）
-- **外壳去头**：卡片不再带 `header`（蓝色 template 标题带移除，无标题简约卡）
+- **同类过程块合并并置顶**：整 turn 只渲染一个 💭 思考过程、一个 🛠️ 工具摘要（跨 message 块合并，替代现行"仅相邻同 kind 合并"），置于卡片顶部、正文在其下
+- **纤薄标题**：header 保留但**不带 `template` 字段**（无蓝色色带，飞书按无色标题带渲染）；标题文案"任务过程"
 - **完成态不重排**：移除完成时的"过程详情"wrapper 合并逻辑，保持流式布局，只换状态行 + 追加 footer
 
 实现落点：`feishu-cards.mjs` `stepStreamCard()`（面板合并/去头/状态行/）+ `step-push-mode.mjs`（默认收起）+ `bridge.mjs`（动画帧驱动器 + `#finishStepCard` 传 usage）。动画帧必须逐帧改变 JSON，否则被 `renderedCardContents` 去重跳过。
