@@ -57,13 +57,15 @@ test('Feishu panel switches read legacy defaults without writing and save indepe
     return { ok: true, value: { bots: [{ botId: 'one', busyMessageMode: 'steer', stepPush: false, stepPushMode: 'post', stepCardPanels: panels }] } };
   }, { channel: 'feishu' });
   const switches = () => view.root.findAllByProps({ role: 'switch' });
-  assert.deepEqual(switches().map((node) => node.props.checked), [false, true]);
+  assert.deepEqual(switches().map((node) => node.props.checked), [false, false]);
   assert.deepEqual(calls, [{ endpoint: 'connection.status', payload: {} }]);
   assert.equal(view.root.findByType('select').props.value, 'steer');
   assert.equal(switches()[0].props.disabled, false, 'can configure before using streaming cards');
   await act(async () => switches()[0].props.onChange({ target: { checked: true } }));
+  await act(async () => switches()[1].props.onChange({ target: { checked: true } }));
   await act(async () => switches()[1].props.onChange({ target: { checked: false } }));
   assert.deepEqual(calls.slice(1).map(({ payload }) => payload), [
+    { botId: 'one', stepCardPanels: { thinkingExpanded: true, toolsExpanded: false } },
     { botId: 'one', stepCardPanels: { thinkingExpanded: true, toolsExpanded: true } },
     { botId: 'one', stepCardPanels: { thinkingExpanded: true, toolsExpanded: false } },
   ]);
@@ -87,16 +89,16 @@ test('Feishu panel save failure rolls back both values and pending saves block r
     return new Promise((resolve) => { finish = () => resolve({ ok: true, value: { bots: [{ botId: 'one', stepCardPanels: payload.stepCardPanels }] } }); });
   }, { channel: 'feishu' });
   const switches = () => view.root.findAllByProps({ role: 'switch' });
-  await act(async () => switches()[1].props.onChange({ target: { checked: false } }));
-  assert.deepEqual(switches().map((node) => node.props.checked), [false, true]);
+  await act(async () => switches()[1].props.onChange({ target: { checked: true } }));
+  assert.deepEqual(switches().map((node) => node.props.checked), [false, false]);
   assert.match(text(view.root.findByProps({ role: 'alert' })), /disk full/);
   fail = false;
-  await act(async () => switches()[1].props.onChange({ target: { checked: false } }));
+  await act(async () => switches()[1].props.onChange({ target: { checked: true } }));
   assert.ok(switches().every((node) => node.props.disabled));
   await act(async () => switches()[0].props.onChange({ target: { checked: true } }));
   assert.equal(writes, 2);
   await act(async () => finish());
-  assert.deepEqual(switches().map((node) => node.props.checked), [false, false]);
+  assert.deepEqual(switches().map((node) => node.props.checked), [false, true]);
   assert.equal(view.root.findAllByProps({ role: 'alert' }).length, 0);
 });
 

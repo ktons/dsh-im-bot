@@ -721,6 +721,8 @@ export class FeishuHarnessBridge {
   #stepPushSendState = new Map();
   /** Live streaming step cards: key → per-turn card state (streaming_card mode). */
   #stepCards = new Map();
+  /** 空闲期过程卡动画（帧值由时钟推导）；首卡创建时启动，无活卡自停。 */
+  #stepCardAnimationTimer = null;
   /** In-flight turn stop markers: key → { requested } for 已停止 sealing. */
   #stepStopFlags = new Map();
   /** Injectable clock for step push throttling (tests pass a fake one). */
@@ -871,6 +873,12 @@ export class FeishuHarnessBridge {
     this.#logger = logger;
     this.#approvals = new HarnessApprovalQueue({ label: 'Feishu', logger });
     this.#signal = signal;
+    this.#signal?.addEventListener('abort', () => {
+      if (this.#stepCardAnimationTimer) {
+        clearInterval(this.#stepCardAnimationTimer);
+        this.#stepCardAnimationTimer = null;
+      }
+    }, { once: true });
     ensureStatus(this.#status);
     this.#deferred = createDeferredDeliveryCoordinator({
       harness, state, signal, logger, watch: false,
@@ -5093,6 +5101,7 @@ export class FeishuHarnessBridge {
         broken: false,
         lastRenderAt: 0,
         renderQueued: false,
+        renderQueuedDirty: false,
         renderChain: null,
         chunkCount: 1,
         cardIds: [],
@@ -5100,6 +5109,13 @@ export class FeishuHarnessBridge {
         renderedCardContents: new Map(),
         answerStart: null,
         answerEnd: null,
+        // eager open：回合开始即开卡（空内容 + 动画状态行），首个事件前也有
+        // "已接单"反馈。旋转换卡后清回 false，空卡不再自动重建。
+        eager: false,
+        // 动画帧计数：动画 tick 每次 +1，帧 = animTick % 帧数。
+        animTick: 0,
+        // 本回合 usage（onUsage 在封存前回填）；仅完成态渲染 F3 footer。
+        usage: null,
         // Answer-integrity tracking: the version bumps every time the draft
         // is rewritten in memory; `renderedAnswerVersion` records the version
         // covered by the last SUCCESSFUL render. The seal may only skip the
@@ -5110,7 +5126,34 @@ export class FeishuHarnessBridge {
       };
       this.#stepCards.set(key, card);
     }
+    this.#ensureStepCardAnimationTimer();
     return card;
+  }
+
+  /**
+   * 空闲期过程卡动画驱动：每秒扫一遍活卡排队重绘。帧值本身由
+   * `#stepCardSpinnerFrame()` 按时钟推导（见 `#syncStepCardChunks`），所以
+   * 测试夹具的冻结时钟即使触发 tick，渲染内容也不变、被去重跳过，不产生
+   * 额外 patch。无活卡后自停；unref 保证不吊住测试进程。
+   */
+  #ensureStepCardAnimationTimer() {
+    if (this.#stepCardAnimationTimer || this.#signal?.aborted) return;
+    const timer = setInterval(() => {
+      if (this.#stepCards.size === 0) {
+        clearInterval(timer);
+        if (this.#stepCardAnimationTimer === timer) this.#stepCardAnimationTimer = null;
+        return;
+      }
+      for (const [key, card] of this.#stepCards) {
+        if (card.broken) continue;
+        if (card.messageId === null && !card.eager) continue;
+        // 帧只在 tick 推进：内容渲染复用当前帧，内容不变时去重依然跳过。
+        card.animTick += 1;
+        this.#queueStepCardRender(key, card.chatId);
+      }
+    }, STEP_STREAM_PATCH_MIN_INTERVAL_MS);
+    timer.unref?.();
+    this.#stepCardAnimationTimer = timer;
   }
 
   /**
@@ -5215,7 +5258,14 @@ export class FeishuHarnessBridge {
 
   #queueStepCardRender(key, chatId) {
     const card = this.#stepCards.get(key);
-    if (!card || card.broken || card.renderQueued) return;
+    if (!card || card.broken) return;
+    if (card.renderQueued) {
+      // 渲染已在飞行中：本次渲染的快照（入口处 split）取不到之后落进来的
+      // 新内容，打补帧标记，链尾循环负责补一帧（eager open 后首个事件
+      // 恰好落在这个窗口里）。
+      card.renderQueuedDirty = true;
+      return;
+    }
     card.renderQueued = true;
     // The coalescing delay lives inside the serial chain, so a finish that
     // awaits the chain can never race a pending first render.
@@ -5226,8 +5276,16 @@ export class FeishuHarnessBridge {
     const previous = card.renderChain ?? Promise.resolve();
     card.renderChain = previous
       .catch(() => {})
-      .then(() => this.#stepPushClock.delay(wait))
-      .then(() => this.#renderStepCardNow(chatId, card))
+      .then(async () => {
+        await this.#stepPushClock.delay(wait);
+        // 补帧循环：飞行渲染期间被 renderQueued 吞掉的增量在链内补渲染，
+        // 直到没有新内容。finishStepCard await 的是整条链，天然覆盖补帧。
+        for (;;) {
+          card.renderQueuedDirty = false;
+          await this.#renderStepCardNow(chatId, card);
+          if (card.broken || !card.renderQueuedDirty) break;
+        }
+      })
       .finally(() => {
         card.renderQueued = false;
       });
@@ -5266,10 +5324,17 @@ export class FeishuHarnessBridge {
     }
     // Serialize before the first await: a concurrent draft must not change the
     // payload halfway through this render or be marked as already delivered.
-    const contents = groups.map((blocks, index) => stepStreamCard(blocks, {
-      status: index === groups.length - 1 ? status : 'sealed',
-      stepCardPanels,
-    }));
+    const contents = groups.map((blocks, index) => {
+      const last = index === groups.length - 1;
+      return stepStreamCard(blocks, {
+        status: last ? status : 'sealed',
+        stepCardPanels,
+        // 动画帧只影响末片的运行态状态行；帧由动画 tick 推进，内容渲染
+        // 复用当前帧，封存分片内容不变，去重自然跳过。
+        ...(last && status === 'running' ? { spinnerFrame: card.animTick } : {}),
+        ...(last && status !== 'running' && status !== 'sealed' ? { usage: card.usage } : {}),
+      });
+    });
     for (let index = 0; index < contents.length; index += 1) {
       let id = activeIds[index];
       const content = contents[index];
@@ -5295,7 +5360,8 @@ export class FeishuHarnessBridge {
     if (card.broken) return;
     const stepCardPanels = this.#stepCardPanels;
     const chunks = splitStepStreamCardBlocks(card.blocks, undefined, undefined, stepCardPanels);
-    if (!chunks.length && card.messageId === null) return;
+    // eager open 的空卡也要开出消息；普通路径保持"无内容不建卡"。
+    if (!chunks.length && card.messageId === null && !card.eager) return;
     const live = chunks[chunks.length - 1] ?? [];
     try {
       await this.#syncStepCardChunks(card, chunks, 'running', stepCardPanels);
@@ -5323,7 +5389,7 @@ export class FeishuHarnessBridge {
    * the answer is visible, `{ ok: false, error }` on failure, or null when
    * no card exists. Callers fall back unless ok is true. Safe to call twice.
    */
-  async #finishStepCard(key, { stopped = false, answerText = null } = {}) {
+  async #finishStepCard(key, { stopped = false, answerText = null, usage = null } = {}) {
     const card = this.#stepCards.get(key);
     this.#stepCards.delete(key);
     if (!card) return null;
@@ -5339,6 +5405,8 @@ export class FeishuHarnessBridge {
     if (body.trim()) {
       this.#writeStepCardAnswer(card, body);
     }
+    // usage 只随完成态封存渲染（"已停止"是否也带未定，暂不带）。
+    card.usage = stopped ? null : usage;
     const stepCardPanels = this.#stepCardPanels;
     const chunks = splitStepStreamCardBlocks(card.blocks, undefined, undefined, stepCardPanels);
     try {
@@ -5411,6 +5479,8 @@ export class FeishuHarnessBridge {
     card.answerStart = null;
     card.answerEnd = null;
     card.lastRenderAt = 0;
+    // 交互后的新卡等真实内容再开，不空转动画空卡。
+    card.eager = false;
   }
 
   async #patchStepCard(messageId, cardJson) {
@@ -5818,7 +5888,10 @@ export class FeishuHarnessBridge {
         // 上一轮异常退出留下的「运行中」卡片先收尾，避免与本轮混淆。
         await this.#finishStepCard(key);
       }
-      this.#ensureStepCard(key, chatId, messageId);
+      const card = this.#ensureStepCard(key, chatId, messageId);
+      // eager open：回合开始即开卡（空内容 + 动画行），首个事件前也有"已接单"反馈。
+      card.eager = true;
+      this.#queueStepCardRender(key, chatId);
     }
     // /stop 打标：回合进行中收到停止请求时，封存为「已停止」而非「已完成」。
     const stepStopFlag = streamingCard ? { requested: false } : null;
@@ -5869,6 +5942,7 @@ export class FeishuHarnessBridge {
       ? null
       : this.#startThinkingStatusWatchdog(key, chatId, messageId);
     let completed;
+    let turnUsage = null;
     try {
       completed = await askInWorkspaceSession({
         onNotice: (notice) => this.#send(chatId, notice, { replyTo: messageId }),
@@ -5887,6 +5961,9 @@ export class FeishuHarnessBridge {
       askOptions: {
         ...baseAskOptions,
         progressMode: liveCot ? 'live' : 'all',
+        // 回合结束时的 token 用量/模型名（tracker 从 assistant/message 事件
+        // 累加），封存过程卡时渲染成 F3 footer。
+        onUsage: (usage) => { turnUsage = usage; },
         // 提问/审批卡弹出前先定格当前过程卡，答案随之流到交互消息之后
         // 的新卡上（与主流式路径的 rotate 语义一致）。
         ...(streamingCard ? {
@@ -5973,6 +6050,7 @@ export class FeishuHarnessBridge {
       const seal = await this.#finishStepCard(key, {
         answerText: deliveryText,
         stopped: stepStopFlag?.requested === true,
+        usage: turnUsage,
       });
       this.#stepStopFlags.delete(key);
       if (seal?.ok) {

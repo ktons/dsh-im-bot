@@ -1027,80 +1027,105 @@ export const STEP_STREAM_CARD_MAX_BYTES = 24_000;
 /**
  * Build one streaming step card from the accumulated process blocks:
  *   { kind: 'message', text }         — interim note / warning / context line
- *   { kind: 'tools', lines: string[] } — tool-call summary panel
- * `status`: 'running' uses the configured panel expansion and ends with an italic status
- * line; 'completed' / 'stopped' collapse the panels and swap the status text;
- * 'sealed' is an overflow spill chunk with no status line at all. Finished
- * turns (and sealed spill chunks) merge every tool/thinking panel into one
- * collapsed "process details" panel so the sealed card stays compact.
+ *   { kind: 'tools', lines: string[] } — tool-call summary panel lines
+ * 定稿形态（2026-11-25）：纤薄无色标题"任务过程"；同类过程块跨块合并——整卡至多
+ * 一个 💭 思考过程、一个 🛠️ 工具摘要，置于顶部（正文在其下）；折叠态省略
+ * `expanded` 字段（默认折叠，也让真机可对照"patch 是否重置用户手动展开态"）；
+ * 完成态不重排（不再并入"过程详情"wrapper），只换状态行并可追加 usage 代码行。
+ * `status`: 'running' 尾部状态行即动画 A 载体（`运行中 · / · · / · · ·`，帧序号
+ * 由调用方按节流间隔推导）；'completed' / 'stopped' 换状态文案；'sealed' 是
+ * 溢出分片，无状态行也无 usage 行。
  */
 
-export function stepStreamCard(rawBlocks, { status = 'running', stepCardPanels } = {}) {
+/** The running-status tail animation frames (variant A: dots growing). */
+export const STEP_STREAM_SPINNER_FRAMES = Object.freeze(['·', '· ·', '· · ·']);
+
+export function stepStreamCard(rawBlocks, { status = 'running', stepCardPanels, spinnerFrame = 0, usage = null } = {}) {
   const running = status === 'running';
   const panels = normalizeFeishuStepCardPanels(stepCardPanels);
-  const elements = [];
-  const panelElements = [];
+  const toolLines = [];
+  const noteLines = [];
+  let toolOmitted = 0;
+  let noteOmitted = 0;
+  const messages = [];
   for (const block of Array.isArray(rawBlocks) ? rawBlocks : []) {
     if (block?.kind === 'tools' || block?.kind === 'notes') {
       const lines = (Array.isArray(block.lines) ? block.lines : [])
         .filter((line) => typeof line === 'string' && line.trim());
-      if (lines.length === 0) continue;
-      const count = lines.length + (Number(block.omitted) || 0);
-      const panel = stepPanel(lines, {
-        title: block.kind === 'tools'
-          ? t('🛠️ 工具摘要（{count}）', { count })
-          : t('💭 思考过程（{count}）', { count }),
-        // Finished turns keep both panels inside the collapsed details wrapper.
-        expanded: running && (block.kind === 'tools' ? panels.toolsExpanded : panels.thinkingExpanded),
-      });
-      if (running) elements.push(panel);
-      else panelElements.push(panel);
+      if (block.kind === 'tools') {
+        toolLines.push(...lines);
+        toolOmitted += Number(block.omitted) || 0;
+      } else {
+        noteLines.push(...lines);
+        noteOmitted += Number(block.omitted) || 0;
+      }
       continue;
     }
     const text = typeof block?.text === 'string' ? block.text.trim() : '';
-    if (text) elements.push({ tag: 'markdown', content: text });
+    if (text) messages.push({ tag: 'markdown', content: text });
   }
-  if (!running && panelElements.length > 0) {
-    // Finished turns: the tool/thinking panels nest inside one collapsed
-    // "process details" wrapper, so the sealed card shows a single line.
-    elements.push(processDetailsPanel(panelElements));
+  const elements = [];
+  if (noteLines.length > 0) {
+    elements.push(stepPanel(noteLines, {
+      title: t('💭 思考过程（{count}）', { count: noteLines.length + noteOmitted }),
+      expanded: panels.thinkingExpanded,
+    }));
   }
-  if (elements.length === 0) elements.push({ tag: 'markdown', content: ' ' });
+  if (toolLines.length > 0) {
+    elements.push(stepPanel(toolLines, {
+      title: t('🛠️ 工具摘要（{count}）', { count: toolLines.length + toolOmitted }),
+      expanded: panels.toolsExpanded,
+    }));
+  }
+  elements.push(...messages);
+  if (elements.length === 0 && running) {
+    // eager open 的空卡：真机渲染空 markdown 会塌掉，塞一个空白行保住卡片。
+    elements.push({ tag: 'markdown', content: ' ' });
+  }
   if (status !== 'sealed') {
-    elements.push({ tag: 'markdown', content: `_${stepStatusText(status)}_` });
+    const frame = Number.isInteger(spinnerFrame)
+      ? Math.abs(spinnerFrame) % STEP_STREAM_SPINNER_FRAMES.length
+      : 0;
+    elements.push({ tag: 'markdown', content: running
+      ? `_${t('运行中')} ${STEP_STREAM_SPINNER_FRAMES[frame]}_`
+      : `_${stepStatusText(status)}_` });
+    if (!running) {
+      const usageLine = stepUsageLine(usage);
+      if (usageLine) elements.push({ tag: 'markdown', content: usageLine });
+    }
   }
   return JSON.stringify({
     schema: '2.0',
-    header: { title: plainText(t('⚙️ 任务过程')), template: 'blue' },
+    // 纤薄标题：header 不带 template 字段，飞书按无色标题带渲染。
+    header: { title: plainText(t('任务过程')) },
     body: { elements },
   });
 }
 
-/** The collapsed wrapper that holds the per-kind panels on finished turns. */
-function processDetailsPanel(children) {
-  return {
-    tag: 'collapsible_panel',
-    expanded: false,
-    background_color: 'grey-50',
-    border: { color: 'grey', corner_radius: '8px' },
-    padding: '8px 8px 8px 8px',
-    header: {
-      title: { tag: 'plain_text', content: t('📋 过程详情') },
-      vertical_align: 'center',
-      padding: '8px 8px 8px 8px',
-      icon: { tag: 'standard_icon', token: 'down-small-ccm_outlined', color: 'grey', size: '16px 16px' },
-      icon_position: 'right',
-      icon_expanded_angle: -180,
-    },
-    elements: children,
-  };
+/** One-turn usage footer（F3 变体）：`模型 X · 输入 N（缓存 M）· 输出 K`。 */
+export function stepUsageLine(usage) {
+  if (!usage || typeof usage !== 'object') return null;
+  const model = typeof usage.model === 'string' && usage.model.trim() ? usage.model.trim() : null;
+  const count = (value) => (Number.isFinite(value) && value > 0 ? value.toLocaleString('en-US') : null);
+  const input = count(usage.inputTokens);
+  const output = count(usage.outputTokens);
+  const cache = count(usage.cacheReadTokens);
+  const parts = [];
+  if (model) parts.push(t('模型 {model}', { model }));
+  if (input) parts.push(cache ? t('输入 {input}（缓存 {cache}）', { input, cache }) : t('输入 {input}', { input }));
+  if (output) parts.push(t('输出 {output}', { output }));
+  if (parts.length === 0) return null;
+  // 全角右括号自带视觉间距，其后的分隔点不再补空格。
+  const joiner = (left) => (/[）)]$/.test(left) ? '· ' : ' · ');
+  let line = '';
+  for (const part of parts) line = line ? line + joiner(line) + part : part;
+  return `\`${line}\``;
 }
 
 /** The collapsible grey panel used for tool summaries and thinking notes. */
 function stepPanel(lines, { title, expanded }) {
-  return {
+  const panel = {
     tag: 'collapsible_panel',
-    expanded: expanded === true,
     background_color: 'grey-50',
     border: { color: 'grey', corner_radius: '8px' },
     padding: '8px 8px 8px 8px',
@@ -1114,6 +1139,10 @@ function stepPanel(lines, { title, expanded }) {
     },
     elements: [{ tag: 'markdown', content: lines.join('\n') }],
   };
+  // 折叠是默认态：省略字段而非写 expanded:false。若真机实验证明缺省字段能让
+  // 客户端保留用户的手动展开态，后续 patch 即不再刷掉折叠状态。
+  if (expanded === true) panel.expanded = true;
+  return panel;
 }
 
 export function stepStatusText(status) {

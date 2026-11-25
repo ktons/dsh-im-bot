@@ -617,6 +617,7 @@ export class HarnessReplyTracker {
   #pendingReasoning = new Map();
   #pendingReasoningChars = 0;
   #reasoning = false;
+  #turnUsage = null;
 
   constructor({ promptRpcId, afterSeq = -1, reasoning = false, finalAnswerOnly = false }) {
     this.#promptRpcId = promptRpcId;
@@ -656,6 +657,32 @@ export class HarnessReplyTracker {
 
   get turn() {
     return this.#targetTurn;
+  }
+
+  /**
+   * 本回合的 token 用量与模型（来自 assistant/message 事件），无则 null。
+   * inputTokens 与 cacheReadTokens 互斥（dsh 口径），分别累加不混算。
+   */
+  get turnUsage() {
+    return this.#turnUsage;
+  }
+
+  #accumulateUsage(usage, source) {
+    if (!usage || typeof usage !== 'object') return;
+    this.#turnUsage ??= {
+      inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, reasoningTokens: 0,
+      model: null, provider: null,
+    };
+    for (const key of ['inputTokens', 'outputTokens', 'cacheReadTokens', 'reasoningTokens']) {
+      const value = Number(usage[key]);
+      if (Number.isFinite(value) && value > 0) this.#turnUsage[key] += value;
+    }
+    const model = typeof source?.model === 'string' && source.model.trim() ? source.model.trim() : null;
+    if (model) {
+      this.#turnUsage.model = model;
+      this.#turnUsage.provider = typeof source?.provider === 'string' && source.provider.trim()
+        ? source.provider.trim() : null;
+    }
   }
 
   #commitText(text, pushUpdate) {
@@ -789,6 +816,7 @@ export class HarnessReplyTracker {
       }
 
       if (event.type === 'assistant/message') {
+        this.#accumulateUsage(event.data?.usage, event.data?.message?.source);
         const text = assistantMessageText(event);
         const step = Number.isSafeInteger(event.data?.step) ? event.data.step : null;
         this.#assistantText.setCanonical(step, text);
@@ -2252,6 +2280,11 @@ export class HarnessClient {
             const artifactCount = ownership?.stopRequested
               ? 0
               : await deliverArtifacts();
+            // 用量在答案判定前回抛：消费方（过程卡 footer）与回合成败解耦，
+            // 回调异常不影响回合结果。
+            if (typeof options.onUsage === 'function' && tracker.turnUsage) {
+              try { options.onUsage({ ...tracker.turnUsage }); } catch { /* ignore */ }
+            }
             const answer = ownership?.stopRequested ? tracker.answer : tracker.finalAnswer;
             if (answer) return answer;
             if (artifactCount > 0) return '';

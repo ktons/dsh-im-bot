@@ -9,7 +9,8 @@ export const DEFAULT_FEISHU_STEP_PUSH_MODE = FEISHU_STEP_PUSH_MODES.STREAMING_CA
 
 export const DEFAULT_FEISHU_STEP_CARD_PANELS = Object.freeze({
   thinkingExpanded: false,
-  toolsExpanded: true,
+  // 定稿（2026-11-25）：过程面板默认收起，点开才见；设置页可按 bot 覆盖。
+  toolsExpanded: false,
 });
 
 export function normalizeFeishuStepCardPanels(value) {

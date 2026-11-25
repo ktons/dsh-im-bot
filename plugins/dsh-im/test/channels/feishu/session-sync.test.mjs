@@ -167,11 +167,13 @@ test('mirror snapshots match the delivered expansion even if preferences change 
   assert.equal(switched, true);
   let entry = [...f.mirrors.values()][0];
   assert.equal(entry.lastContent, f.visible.get(entry.cardIds.at(-1)));
-  assert.deepEqual(panels(entry.lastContent).map(panel => panel.expanded), [true, false]);
+  assert.equal(panels(entry.lastContent)[0].expanded, true);
+  assert.equal(panels(entry.lastContent)[1].expanded, undefined, "collapsed panels omit expanded");
   f.emit({ ...tool, seq: 104 }); await f.drain();
   entry = [...f.mirrors.values()][0];
   assert.equal(entry.lastContent, f.visible.get(entry.cardIds.at(-1)));
-  assert.deepEqual(panels(entry.lastContent).map(panel => panel.expanded), [false, true]);
+  assert.equal(panels(entry.lastContent)[0].expanded, undefined, "collapsed panels omit expanded");
+  assert.equal(panels(entry.lastContent)[1].expanded, true);
   f.close();
   const final = { ...answer('recovered answer'), seq: 105 };
   const ended = { ...end(), seq: 106 };
@@ -179,7 +181,7 @@ test('mirror snapshots match the delivered expansion even if preferences change 
     bridgeOptions: { stepCardPanels: original }, history: [start(), user(), tool, final, ended] });
   await recovered.drain();
   const last = recovered.patches.at(-1).data.content;
-  assert.equal(panels(last)[0].expanded, false);
+  assert.equal(panels(last)[0].expanded, true, "the seal re-renders with the recovered bridge’s current preferences");
   assert.match(last, /recovered answer/);
   assert.equal(f.mirrors.size, 0);
 });
@@ -400,7 +402,7 @@ test('restart resynchronizes every overflow chunk from the latest snapshot', asy
   assert.ok(recovered.patches.at(-1).data.content.includes('last answer'));
   const delivered = recovered.patches.map(patch => patch.data.content).join('\n');
   const bodyText = content => JSON.parse(content).body.elements
-    .filter(element => element.tag === 'markdown' && !/^_(运行中|已完成)_$/.test(element.content))
+    .filter(element => element.tag === 'markdown' && !/^_(运行中( [· ]+)?|已完成)_$/.test(element.content))
     .map(element => element.content).join('\n');
   assert.deepEqual(recovered.patches.map(patch => bodyText(patch.data.content)),
     entry.cardIds.map(id => bodyText(f.visible.get(id))));

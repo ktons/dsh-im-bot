@@ -24,38 +24,70 @@ import {
 } from '../../../src/channels/feishu/feishu-cards.mjs';
 import { setImHostLanguage } from '../../../src/channels/shared/i18n.mjs';
 
-test('streaming card expansion keeps legacy defaults and respects all four panel combinations', () => {
-  const blocks = [{ kind: 'notes', lines: ['过程说明'] }, { kind: 'tools', lines: ['工具摘要'] }, { kind: 'message', text: '最终答案' }];
+test('streaming card renders merged top panels, slim header, spinner status and usage footer', () => {
+  const blocks = [
+    { kind: 'notes', lines: ['过程说明一'], omitted: 0 },
+    { kind: 'tools', lines: ['工具一'], omitted: 0 },
+    { kind: 'message', text: '最终答案' },
+    { kind: 'tools', lines: ['工具二'], omitted: 1 },
+  ];
   const panels = (card) => card.body.elements.filter((element) => element.tag === 'collapsible_panel');
-  assert.deepEqual(panels(JSON.parse(stepStreamCard(blocks))).map((panel) => panel.expanded), [false, true]);
-  for (const thinkingExpanded of [false, true]) {
-    for (const toolsExpanded of [false, true]) {
-      const stepCardPanels = { thinkingExpanded, toolsExpanded };
-      const running = JSON.parse(stepStreamCard(blocks, { stepCardPanels }));
-      assert.deepEqual(panels(running).map((panel) => panel.expanded), [thinkingExpanded, toolsExpanded]);
-      for (const status of ['completed', 'stopped', 'sealed']) {
-        const card = JSON.parse(stepStreamCard(blocks, { status, stepCardPanels }));
-        const [details] = panels(card);
-        assert.equal(details.expanded, false);
-        assert.deepEqual(details.elements.map((panel) => panel.expanded), [false, false]);
-        assert.equal(card.body.elements[0].content, '最终答案');
-        assert.match(JSON.stringify(details), /过程说明/);
-        assert.match(JSON.stringify(details), /工具摘要/);
-      }
-    }
+  const markdown = (card) => card.body.elements.filter((element) => element.tag === 'markdown')
+    .map((element) => element.content);
+
+  const card = JSON.parse(stepStreamCard(blocks));
+  // 纤薄标题：无 template 色带。
+  assert.equal(card.header.title.content, '任务过程');
+  assert.equal(card.header.template, undefined);
+  // 同类块跨块合并并置顶：思考 → 工具 → 正文；omitted 计入标题数。
+  assert.deepEqual(panels(card).map((panel) => panel.header.title.content),
+    ['💭 思考过程（1）', '🛠️ 工具摘要（3）']);
+  // 折叠态省略 expanded 字段（缺省即折叠）。
+  assert.deepEqual(panels(card).map((panel) => panel.expanded), [undefined, undefined]);
+  assert.deepEqual(markdown(card), ['最终答案', '_运行中 ·_']);
+  // 展开配置显式写字段。
+  const expandedBoth = JSON.parse(stepStreamCard(blocks, { stepCardPanels: { thinkingExpanded: true, toolsExpanded: true } }));
+  assert.deepEqual(panels(expandedBoth).map((panel) => panel.expanded), [true, true]);
+  // 动画 A 帧循环。
+  for (const [frame, dots] of [[0, '·'], [1, '· ·'], [2, '· · ·'], [3, '·'], [-1, '· ·']]) {
+    const running = JSON.parse(stepStreamCard(blocks, { spinnerFrame: frame }));
+    assert.equal(markdown(running).at(-1), `_运行中 ${dots}_`);
   }
-  assert.equal(panels(JSON.parse(stepStreamCard([{ kind: 'notes', lines: [] }], { stepCardPanels: { thinkingExpanded: true } }))).length, 0);
+  // 完成态不重排：面板位置不变，状态行换文案并追加 F3 usage 行。
+  const finished = JSON.parse(stepStreamCard(blocks, {
+    status: 'completed',
+    usage: { model: 'glm-4.7', inputTokens: 12_345, outputTokens: 1_234, cacheReadTokens: 9_876 },
+  }));
+  assert.deepEqual(panels(finished).map((panel) => panel.header.title.content),
+    ['💭 思考过程（1）', '🛠️ 工具摘要（3）']);
+  assert.deepEqual(markdown(finished),
+    ['最终答案', '_已完成_', '`模型 glm-4.7 · 输入 12,345（缓存 9,876）· 输出 1,234`']);
+  // 无 usage 不渲染该行；已停止同。
+  const stopped = JSON.parse(stepStreamCard(blocks, { status: 'stopped', usage: null }));
+  assert.deepEqual(markdown(stopped), ['最终答案', '_已停止_']);
+  // sealed 溢出分片：无状态行也无 usage 行。
+  const sealed = JSON.parse(stepStreamCard(blocks, { status: 'sealed', usage: { model: 'm', inputTokens: 1, outputTokens: 1 } }));
+  assert.deepEqual(markdown(sealed), ['最终答案']);
+  // 空内容运行卡（eager open）：空白占位保高度 + 状态行。
+  const fresh = JSON.parse(stepStreamCard([], { status: 'running', spinnerFrame: 2 }));
+  assert.deepEqual(markdown(fresh), [' ', '_运行中 · · ·_']);
 });
 
 test('streaming card splitting measures the selected panel expansion at the byte boundary', () => {
   const blocks = [{ kind: 'tools', lines: ['first'] }, { kind: 'tools', lines: ['second'] }];
-  const limit = Buffer.byteLength(stepStreamCard(blocks));
-  const stepCardPanels = { thinkingExpanded: false, toolsExpanded: false };
-  assert.equal(splitStepStreamCardBlocks(blocks, limit).length, 1);
-  const chunks = splitStepStreamCardBlocks(blocks, limit, undefined, stepCardPanels);
-  assert.equal(chunks.length, 2, 'false uses more serialized bytes than true');
+  const collapsedPanels = { thinkingExpanded: false, toolsExpanded: false };
+  const expandedPanels = { thinkingExpanded: false, toolsExpanded: true };
+  // 折叠态省略 expanded 字段更短；展开态显式 expanded:true 每面板多一段序列化。
+  const collapsed = Buffer.byteLength(stepStreamCard(blocks, { stepCardPanels: collapsedPanels }));
+  const expanded = Buffer.byteLength(stepStreamCard(blocks, { stepCardPanels: expandedPanels }));
+  assert.ok(expanded > collapsed);
+  // 预算取"展开态整体放不下、折叠态与单块展开态都放得下"的临界值。
+  const limit = expanded - 1;
+  assert.equal(splitStepStreamCardBlocks(blocks, limit, undefined, collapsedPanels).length, 1);
+  const chunks = splitStepStreamCardBlocks(blocks, limit, undefined, expandedPanels);
+  assert.equal(chunks.length, 2, 'expanded panels hit the budget earlier and split');
   assert.deepEqual(chunks.flat(), blocks);
-  assert.ok(chunks.every((chunk) => Buffer.byteLength(stepStreamCard(chunk, { stepCardPanels })) <= limit));
+  assert.ok(chunks.every((chunk) => Buffer.byteLength(stepStreamCard(chunk, { stepCardPanels: expandedPanels })) <= limit));
 });
 
 test('approval cards replace actions with the resolved text and preserve operation details', () => {

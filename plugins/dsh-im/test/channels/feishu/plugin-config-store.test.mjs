@@ -14,20 +14,20 @@ test('panel settings preserve old config on load and persist independent boolean
   await writeFile(path, old);
   const store = await new PluginConfigStore(path).load();
   assert.equal(await readFile(path, 'utf8'), old, 'reading old config must not rewrite it');
-  assert.deepEqual(store.getBot('one').stepCardPanels, { thinkingExpanded: false, toolsExpanded: true });
+  assert.deepEqual(store.getBot('one').stepCardPanels, { thinkingExpanded: false, toolsExpanded: false });
   for (const thinkingExpanded of [false, true]) {
     for (const toolsExpanded of [false, true]) {
       const panels = { thinkingExpanded, toolsExpanded };
       await store.saveBot({ ...store.getBot('one'), stepCardPanels: panels });
       const reloaded = await new PluginConfigStore(path).load();
       assert.deepEqual(reloaded.getBot('one').stepCardPanels, panels);
-      assert.deepEqual(reloaded.getBot('two').stepCardPanels, { thinkingExpanded: false, toolsExpanded: true });
+      assert.deepEqual(reloaded.getBot('two').stepCardPanels, { thinkingExpanded: false, toolsExpanded: false });
       assert.equal(reloaded.getBot('one').stepPushMode, 'live_cot');
       assert.equal(reloaded.getBot('one').stepPush, true);
     }
   }
   await store.saveBot({ ...store.getBot('one'), stepCardPanels: { thinkingExpanded: 'true', toolsExpanded: null } });
-  assert.deepEqual(store.getBot('one').stepCardPanels, { thinkingExpanded: false, toolsExpanded: true });
+  assert.deepEqual(store.getBot('one').stepCardPanels, { thinkingExpanded: false, toolsExpanded: false });
   await store.saveBot({ ...store.getBot('one'), stepCardPanels: { toolsExpanded: false } });
   assert.deepEqual(store.getBot('one').stepCardPanels, { thinkingExpanded: false, toolsExpanded: false });
 });

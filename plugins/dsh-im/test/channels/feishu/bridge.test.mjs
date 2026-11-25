@@ -10461,19 +10461,21 @@ test('step card panel settings apply on the next live update and the finished ca
   const accepted = bridge.accept(event('om_panels_live', '验证面板'));
   await ready.promise;
   await eventually(() => panels().length === 2);
-  assert.deepEqual(panels().map((panel) => panel.expanded), [true, false]);
+  assert.equal(panels()[0].expanded, true, 'the thinking panel follows the live preference');
+  assert.equal(panels()[1].expanded, undefined, 'collapsed panels omit expanded so the client keeps its own state');
   const count = interactiveCreates.length + patches.length;
   bridge.setStepCardPanels({ thinkingExpanded: false, toolsExpanded: true });
   assert.equal(interactiveCreates.length + patches.length, count, 'changing preferences sends no extra message');
   await update({ type: 'tool', name: 'bash', arguments: '{"command":"echo second"}' });
   await eventually(() => patches.length + interactiveCreates.length > count);
-  assert.deepEqual(panels().map((panel) => panel.expanded), [false, true]);
+  assert.equal(panels()[0].expanded, undefined, 'the thinking panel collapsed on the next live update');
+  assert.equal(panels()[1].expanded, true, 'the tools panel expanded on the next live update');
   finish.resolve();
   await accepted;
   await bridge.waitForIdle();
   assert.equal(interactiveCreates.length, 1);
-  assert.equal(panels()[0].expanded, false);
-  assert.deepEqual(panels()[0].elements.map((panel) => panel.expanded), [false, false]);
+  assert.equal(panels()[0].expanded, undefined);
+  assert.equal(panels()[1].expanded, true, 'the seal keeps the user’s expanded preference');
   assert.match(JSON.stringify(latest()), /最终结果/);
   assert.deepEqual(text, []);
 });
@@ -10507,8 +10509,9 @@ test('step push streaming_card mode: one process card patched in place, answer s
   assert.ok(interactiveCreates.length >= 1, 'the process card is created');
   const serialized = JSON.stringify(patches.at(-1)?.content ?? {});
   assert.ok(serialized.includes('collapsible_panel'), 'the process panel is rendered');
-  assert.ok(serialized.includes('📋 过程详情'), 'the finished turn merges panels into one process-details panel');
-  assert.ok(serialized.includes('💭 思考'), 'the thinking section keeps its header inside the merged panel');
+  assert.ok(serialized.includes('💭 思考过程（1）'), 'the interim note lands in the merged thinking panel');
+  assert.ok(serialized.includes('🛠️ 工具摘要（3）'), 'the tool lines merge into one tools panel');
+  assert.ok(!serialized.includes('过程详情'), 'the old process-details wrapper is gone');
   assert.ok(serialized.includes('正在整理'), 'the interim note morphed from the answer draft');
   assert.ok(serialized.includes('ls'), 'tool summaries land in the panel');
   assert.ok(serialized.includes('最终答案'), 'the final answer is sealed inside the card');
@@ -10539,9 +10542,9 @@ test('step push streaming_card mode: a fast single-tool turn still seals the car
   await bridge.accept(event('om_card_in_2', '快任务'));
   await bridge.waitForIdle();
 
-  assert.equal(interactiveCreates.length, 1, 'exactly one process card is opened');
-  assert.equal(patches.length, 1, 'the only patch is the final seal');
-  const sealed = JSON.stringify(patches[0]?.content ?? {});
+  assert.equal(interactiveCreates.length, 1, 'exactly one process card is opened (eager)');
+  assert.equal(patches.length, 2, 'one live content frame plus the final seal');
+  const sealed = JSON.stringify(patches.at(-1)?.content ?? {});
   assert.ok(sealed.includes('秒完成'), 'the answer is sealed inside the card');
   assert.ok(sealed.includes('已完成'), 'the seal marks the card completed');
   assert.ok(!sealed.includes('_运行中_'), 'no running status remains after the seal');
@@ -10611,8 +10614,8 @@ test('step push streaming_card mode: the answer draft streams live and interim s
   await bridge.waitForIdle();
 
   const sealed = JSON.stringify(patches.at(-1)?.content ?? {});
-  assert.ok(sealed.includes('📋 过程详情'), 'the finished turn merges panels into one process-details panel');
-  assert.ok(sealed.includes('💭 思考'), 'the superseded draft keeps its thinking section header');
+  assert.ok(sealed.includes('💭 思考过程（1）'), 'the superseded draft keeps its thinking panel');
+  assert.ok(sealed.includes('🛠️ 工具摘要（1）'), 'the tool line keeps its tools panel');
   assert.ok(sealed.includes('我先看看'), 'the interim note text survives the fold');
   assert.ok(sealed.includes('结论如下'), 'the last step sealed as the answer');
   assert.ok(sealed.includes('已完成'), 'the card seals completed');
@@ -10679,12 +10682,82 @@ test('step push streaming_card mode: a plain Q&A turn opens one card with the an
   await bridge.accept(event('om_card_in_7', '纯问答'));
   await bridge.waitForIdle();
 
-  assert.equal(interactiveCreates.length, 1, 'one card opens at seal time');
-  const created = JSON.stringify(interactiveCreates[0] ?? {});
-  assert.ok(created.includes('直接回答'), 'the answer lands in the card');
-  assert.ok(created.includes('已完成'), 'the card opens already sealed');
-  assert.equal(patches.length, 0, 'no intermediate patch was needed');
+  assert.equal(interactiveCreates.length, 1, 'one card opens eagerly at turn start');
+  const eager = JSON.stringify(interactiveCreates[0] ?? {});
+  assert.ok(!eager.includes('直接回答'), 'the eager card opens before the answer exists');
+  assert.ok(eager.includes('_运行中'), 'the eager card shows the running animation');
+  assert.equal(patches.length, 1, 'the answer is sealed into the eager card with one patch');
+  const sealed = JSON.stringify(patches[0]?.content ?? {});
+  assert.ok(sealed.includes('直接回答'), 'the answer lands in the card');
+  assert.ok(sealed.includes('已完成'), 'the card seals completed');
   assert.deepEqual(text, [], 'no post is sent');
+});
+
+test('step push streaming_card mode: eager open, animation ticks and a usage footer on seal', async () => {
+  const fixture = stateFixture();
+  const { client, interactiveCreates, patches, text } = stepCardClient();
+  const { stepPushClock } = stepPushClockFixture();
+  let update;
+  const ready = deferred();
+  const finish = deferred();
+  const bridge = new FeishuHarnessBridge({
+    client,
+    channel: stepPushChannel({}),
+    harness: stepPushHarness(async (_sessionId, _text, options) => {
+      update = options.onUpdate;
+      await update({ type: 'tool', name: 'bash', arguments: '{"command":"pwd"}' });
+      ready.resolve();
+      await finish.promise;
+      options.onUsage?.({
+        inputTokens: 12345,
+        outputTokens: 1234,
+        cacheReadTokens: 9876,
+        model: 'glm-4.7',
+        provider: 'zai',
+      });
+      return '动画与用量';
+    }),
+    state: fixture.state,
+    status: bridgeStatus(),
+    allowedSenderOpenIds: new Set(['ou_user']),
+    stepPush: true,
+    stepPushMode: 'streaming_card',
+    stepPushClock,
+  });
+  const accepted = bridge.accept(event('om_card_in_eager', 'eager 开卡'));
+  await ready.promise;
+  await eventually(() => patches.length >= 1);
+
+  assert.equal(interactiveCreates.length, 1, 'the card opens eagerly before the first content arrives');
+  const eager = JSON.stringify(interactiveCreates[0] ?? {});
+  assert.ok(eager.includes('_运行中'), 'the eager card shows the running animation');
+
+  // 动画帧由每秒的动画 tick 推进，与内容渲染无关：内容帧不换帧（去重友好）。
+  assert.equal(
+    patches.at(-1)?.content.body.elements.at(-1)?.content,
+    '_运行中 ·_',
+    'the first frame renders before any animation tick',
+  );
+  // 真实等一个动画 tick（1s 间隔）：帧应推进一格并产生一次 patch。
+  const frames = async () => {
+    const deadline = Date.now() + 2_500;
+    while (Date.now() < deadline) {
+      const last = patches.at(-1)?.content.body.elements.at(-1)?.content;
+      if (last === '_运行中 · ·_') return true;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    return false;
+  };
+  assert.ok(await frames(), 'the animation tick advances the spinner one frame per second');
+
+  finish.resolve();
+  await accepted;
+  await bridge.waitForIdle();
+  const sealed = JSON.stringify(patches.at(-1)?.content ?? {});
+  assert.ok(sealed.includes('已完成'), 'the card seals completed');
+  assert.ok(!sealed.includes('运行中'), 'no spinner remains after the seal');
+  assert.ok(sealed.includes('`模型 glm-4.7 · 输入 12,345（缓存 9,876）· 输出 1,234`'), 'the usage footer renders model, tokens and cache');
+  assert.deepEqual(text, [], 'no post fallback');
 });
 
 test('step push streaming_card mode: an oversized answer is chunked across sealed cards', async () => {
@@ -10717,7 +10790,7 @@ test('step push streaming_card mode: an oversized answer is chunked across seale
   const last = JSON.stringify(interactiveCreates.at(-1) ?? {});
   assert.ok(last.includes('已完成'), 'the final card seals completed');
   assert.ok(!JSON.stringify(interactiveCreates[0]).includes('已完成'), 'earlier spill cards are sealed without a status line');
-  assert.equal(patches.length, 0, 'no patch failures were triggered');
+  assert.equal(patches.length, 1, 'the eager card absorbs the first chunk as its seal patch');
   assert.deepEqual(text, [], 'the long answer never falls back to posts');
 });
 
@@ -10750,8 +10823,8 @@ test('step push streaming_card mode: an oversized tool panel sheds its oldest li
   await bridge.waitForIdle();
 
   const sealed = JSON.stringify(patches.at(-1)?.content ?? {});
-  assert.ok(sealed.includes('工具摘要（150）'), 'the nested tool panel header keeps the full tool count');
-  assert.ok(sealed.includes('📋 过程详情'), 'the finished turn wraps the panels in one details wrapper');
+  assert.ok(sealed.includes('🛠️ 工具摘要（150）'), 'the nested tool panel header keeps the full tool count');
+  assert.ok(!sealed.includes('过程详情'), 'the old process-details wrapper is gone');
   assert.ok(sealed.includes('面板压测完成'), 'the answer still seals inside the card');
   for (const patch of patches) {
     assert.ok(
@@ -10789,12 +10862,12 @@ test('step push streaming_card mode: an approval interaction rotates to a fresh 
   await bridge.waitForIdle();
 
   assert.equal(interactiveCreates.length, 2, 'the rotate opened one fresh card below the interaction');
-  assert.equal(patches.length, 2, 'rotate seal plus the final seal');
-  const rotated = JSON.stringify(patches[0]?.content ?? {});
+  assert.equal(patches.length, 3, 'one live frame on the old card, the rotate seal, then the final seal');
+  const rotated = JSON.stringify(patches[1]?.content ?? {});
   assert.ok(rotated.includes('pwd'), 'the old card keeps the process so far');
   assert.ok(!rotated.includes('_运行中_') && !rotated.includes('已完成'), 'the old card is sealed without a status line');
   assert.ok(!rotated.includes('旋转后答案'), 'the old card does not contain the post-interaction answer');
-  const sealed = JSON.stringify(patches[1]?.content ?? {});
+  const sealed = JSON.stringify(patches[2]?.content ?? {});
   assert.ok(sealed.includes('旋转后答案'), 'the answer streams into the fresh card');
   assert.ok(sealed.includes('已完成'), 'the fresh card seals completed');
   assert.deepEqual(text, [], 'no post fallback');
@@ -13597,7 +13670,8 @@ test('repatching cards after an approval must preserve pre-approval cards', asyn
   await bridge.accept(event('om_review_rotation','检查交互换卡'));
   await bridge.waitForIdle();
   const finalCards=deliveredCardContents(fx.interactiveCreates,fx.patches,fx.ids);
-  const before=JSON.stringify(fx.interactiveCreates[0]);
+  // eager open 后首卡的内容帧落在 patch 里（create 是空态卡）。
+  const before=JSON.stringify(fx.patches.find((p) => p.messageId === fx.ids[0])?.content ?? fx.interactiveCreates[0]);
   t.diagnostic(JSON.stringify({ids:fx.ids,beforeHadMarker:before.includes('BEFORE_ROTATION_MARKER'),afterHadMarker:finalCards[0].includes('BEFORE_ROTATION_MARKER'),patchTargets:fx.patches.map(p=>p.messageId)}));
   assert.ok(before.includes('BEFORE_ROTATION_MARKER'));
   assert.ok(finalCards[0].includes('BEFORE_ROTATION_MARKER'),'The original card must not be overwritten by a post-approval chunk');

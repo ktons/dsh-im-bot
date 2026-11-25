@@ -22,7 +22,7 @@ test('panel management RPC preserves legacy defaults, validates input, and updat
   const updates = [];
   runtime.setStepCardPanels = (value) => updates.push(value);
   const snapshot = () => rpc(FEISHU_ENDPOINTS.status, {});
-  assert.deepEqual((await snapshot()).value.bots[0].stepCardPanels, { thinkingExpanded: false, toolsExpanded: true });
+  assert.deepEqual((await snapshot()).value.bots[0].stepCardPanels, { thinkingExpanded: false, toolsExpanded: false });
   const panels = { thinkingExpanded: true, toolsExpanded: false };
   const result = await rpc(FEISHU_ENDPOINTS.setStepCardPanels, { botId: existing.id, stepCardPanels: panels });
   assert.equal(result.ok, true);
@@ -31,7 +31,7 @@ test('panel management RPC preserves legacy defaults, validates input, and updat
   assert.deepEqual(updates, [panels]);
   assert.equal(runtime.stops, 0);
   assert.equal(fx.runtimes.get(existing.id).length, 1);
-  assert.deepEqual(result.value.bots[1].stepCardPanels, { thinkingExpanded: false, toolsExpanded: true });
+  assert.deepEqual(result.value.bots[1].stepCardPanels, { thinkingExpanded: false, toolsExpanded: false });
   for (const stepCardPanels of [null, [], {}, { thinkingExpanded: true }, { thinkingExpanded: 'true', toolsExpanded: false }, { ...panels, extra: true }]) {
     const bad = await rpc(FEISHU_ENDPOINTS.setStepCardPanels, { botId: existing.id, stepCardPanels });
     assert.equal(bad.ok, false);
@@ -41,7 +41,7 @@ test('panel management RPC preserves legacy defaults, validates input, and updat
   assert.equal((await rpc(FEISHU_ENDPOINTS.setStepCardPanels, { botId: 'missing', stepCardPanels: panels })).ok, false);
   assert.deepEqual(updates, [panels]);
   fx.configStore.saveBot = async () => { throw new Error('disk full'); };
-  await assert.rejects(fx.controller.updateStepCardPanels(existing.id, { thinkingExpanded: false, toolsExpanded: true }), /disk full/);
+  await assert.rejects(fx.controller.updateStepCardPanels(existing.id, { thinkingExpanded: false, toolsExpanded: false }), /disk full/);
   assert.deepEqual(updates, [panels], 'failed persistence must not change the runtime');
   assert.deepEqual((await snapshot()).value.bots[0].stepCardPanels, panels);
 });

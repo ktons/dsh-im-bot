@@ -1,22 +1,25 @@
 // 飞书"任务过程"流式卡片的离线预览生成器。
 //
-// 直接 import 生产代码所用的同一套卡片 JSON 形态，生成定稿设计的各状态卡片，
-// 产出自包含的 preview.html（内置迷你渲染器 + 近似飞书样式 + 动画帧轮播）。
+// 直接 import 生产函数 stepStreamCard（bridge 渲染用的同一实现），生成定稿设计
+// 的各状态卡片，产出自包含的 preview.html（内置迷你渲染器 + 近似飞书样式 +
+// 动画帧轮播）。改卡片样式只需改 feishu-cards.mjs 后重跑本脚本。
 // 用法见工作区 skill：dsh-im-card-preview。
 //
 //   node scripts/step-card-preview.mjs            # 生成 .preview/step-card-preview.html
 //
-// 2026-11-25 拍板的定稿设计（finalCard 在此模拟，实现进 stepStreamCard 后由
-// 生产函数直接出这些 JSON，本文件的 finalCard 届时退役）：
-//   - 无大标题外壳（去掉蓝色 template header，整卡简约）
-//   - 同类过程块合并：整 turn 只有一个 🛠️ 工具摘要、一个 💭 思考过程，默认收起
-//   - 运行态状态行动画 A："运行中 · / · · / · · ·" 点数渐增
-//   - 完成态不重排（不再并入"过程详情"wrapper），只换状态行 + F3 usage footer
+// 2026-11-25 定稿并已实现进生产 stepStreamCard：
+//   - 纤薄无色标题（header 不带 template，去掉蓝色大标题外壳）
+//   - 同类过程块合并置顶：整 turn 一个 💭 思考过程、一个 🛠️ 工具摘要，默认收起
+//   - 运行态状态行动画 A："运行中 · / · · / · · ·" 点数渐增（每秒一帧）
+//   - 完成态不重排（保持流式布局），只换状态行 + F3 usage footer
 //   - F3 footer：独立代码行 `模型 X · 输入 N（缓存 M）· 输出 K`
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+
+import { stepStreamCard } from '../src/channels/feishu/feishu-cards.mjs';
+import { DEFAULT_FEISHU_STEP_CARD_PANELS } from '../src/channels/feishu/step-push-mode.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = path.join(ROOT, '.preview');
@@ -52,83 +55,25 @@ const ANSWER_MD = [
   '详情见附件，或回复 “继续” 展开全部明细。',
 ].join('\n');
 
-// ── 定稿渲染（模拟实现进 stepStreamCard 后的产出） ─────────────────────────
+// ── 定稿渲染：直接调用生产 stepStreamCard（与 bridge 同一实现） ────────────
 
-const fmtK = (n) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
-const fmtGroup = (n) => n.toLocaleString('en-US');
-
-function collapsedPanel(title, lines) {
-  return {
-    tag: 'collapsible_panel',
-    expanded: false,
-    background_color: 'grey-50',
-    border: { color: 'grey', corner_radius: '8px' },
-    padding: '8px 8px 8px 8px',
-    header: {
-      title: { tag: 'plain_text', content: title },
-      vertical_align: 'center',
-      padding: '8px 8px 8px 8px',
-      icon: { tag: 'standard_icon', token: 'down-small-ccm_outlined', color: 'grey', size: '16px 16px' },
-      icon_position: 'right',
-      icon_expanded_angle: -180,
-    },
-    elements: [{ tag: 'markdown', content: lines.join('\n') }],
-  };
-}
-
-/**
- * 定稿卡片：纤薄无色标题（不带蓝色 template 色带）；思考/工具面板置顶且各合并
- * 为一个收起面板；answer 内容随后；状态行在最尾（运行态即动画 A 载体）；
- * 完成/停止态追加 F3 usage 代码行。
- * 与生产 stepStreamCard 的关键差异（实现时落地）：header 去 template 色、
- * 跨块合并面板并置顶、完成态不再并入"过程详情"wrapper、usage 由 finishStepCard 传入。
- */
-function finalCard(blocks, { status = 'running', frame = 0, usage = null } = {}) {
-  const messages = [];
-  const toolLines = [];
-  const noteLines = [];
-  for (const block of Array.isArray(blocks) ? blocks : []) {
-    const lines = (Array.isArray(block?.lines) ? block.lines : []).filter((line) => typeof line === 'string' && line.trim());
-    if (block?.kind === 'tools') toolLines.push(...lines);
-    else if (block?.kind === 'notes') noteLines.push(...lines);
-    else {
-      const text = typeof block?.text === 'string' ? block.text.trim() : '';
-      if (text) messages.push({ tag: 'markdown', content: text });
-    }
-  }
-  const elements = [];
-  if (noteLines.length) elements.push(collapsedPanel(`💭 思考过程（${noteLines.length}）`, noteLines));
-  if (toolLines.length) elements.push(collapsedPanel(`🛠️ 工具摘要（${toolLines.length}）`, toolLines));
-  elements.push(...messages);
-  if (elements.length === 0 && status === 'running') {
-    // 空内容占位：真机渲染空 markdown 会塌掉，塞一个空白行保住卡片高度。
-    elements.push({ tag: 'markdown', content: ' ' });
-  }
-  if (status === 'running') {
-    elements.push({ tag: 'markdown', content: `_运行中 ${['·', '· ·', '· · ·'][frame % 3]}_` });
-  } else {
-    elements.push({ tag: 'markdown', content: status === 'completed' ? '_已完成_' : '_已停止_' });
-    if (usage) {
-      elements.push({ tag: 'markdown', content: `\`模型 ${usage.model} · 输入 ${fmtGroup(usage.inputTokens)}（缓存 ${fmtGroup(usage.cacheReadTokens)}）· 输出 ${fmtGroup(usage.outputTokens)}\`` });
-    }
-  }
-  // 纤薄标题：header 不带 template 字段时飞书按无色标题带渲染。
-  return JSON.stringify({
-    schema: '2.0',
-    header: { title: { tag: 'plain_text', content: '任务过程' } },
-    body: { elements },
+const card = (blocks, { status = 'running', frame = 0, usage = null } = {}) =>
+  stepStreamCard(blocks, {
+    status,
+    stepCardPanels: DEFAULT_FEISHU_STEP_CARD_PANELS,
+    spinnerFrame: frame,
+    usage,
   });
-}
 
 // ── 页面数据组装 ───────────────────────────────────────────────────────────
 
 const fullTurnBlocks = [...demoBlocks(), { kind: 'message', text: ANSWER_MD }];
 
 const design = {
-  fresh: Array.from({ length: 3 }, (_, frame) => finalCard([], { status: 'running', frame })),
-  running: Array.from({ length: 3 }, (_, frame) => finalCard(demoBlocks(), { status: 'running', frame })),
-  completed: finalCard(fullTurnBlocks, { status: 'completed', usage: DEMO_USAGE }),
-  stopped: finalCard(fullTurnBlocks, { status: 'stopped' }),
+  fresh: Array.from({ length: 3 }, (_, frame) => card([], { status: 'running', frame })),
+  running: Array.from({ length: 3 }, (_, frame) => card(demoBlocks(), { status: 'running', frame })),
+  completed: card(fullTurnBlocks, { status: 'completed', usage: DEMO_USAGE }),
+  stopped: card(fullTurnBlocks, { status: 'stopped' }),
 };
 
 // ── 迷你渲染器 + 页面模板 ──────────────────────────────────────────────────
@@ -323,7 +268,7 @@ const html = `<!doctype html>
 </head>
 <body>
 <h1>飞书“任务过程”流式卡片 · 定稿预览</h1>
-<p class="note">2026-11-25 拍板：动画 A（状态行点数渐增）· usage F3（代码行 + 缓存桶）· 面板默认收起 · 同类面板合并并置顶（思考过程 → 工具摘要 → 正文）· 纤薄无色标题 · 完成态不再重排。数据形态为定稿设计（实现进生产 stepStreamCard 后即此输出）。渲染为近似样式，最终以飞书客户端为准。</p>
+<p class="note">2026-11-25 定稿并已实现：动画 A（状态行点数渐增，每秒一帧）· usage F3（代码行 + 缓存桶）· 面板默认收起 · 同类面板合并并置顶（思考过程 → 工具摘要 → 正文）· 纤薄无色标题 · 完成态不再重排。卡片 JSON 由生产 stepStreamCard 直接生成（与线上同一实现）。渲染为近似样式，最终以飞书客户端为准。</p>
 
 <h2>四个状态（运行中的两张卡随播放器轮播帧）</h2>
 <div class="controls">
