@@ -243,7 +243,7 @@ test('a group round logs notices a returning client reads back, and the feed say
 })
 
 test('a Bot\'s own chat message and its question card are notices; a hidden Bot-to-Bot turn is not', async (t) => {
-  const { call, emit, ctx, rt, stop } = start()
+  const { call, emit, rt, stop } = start()
   t.after(stop)
   const { writer } = await team(call)
   const { boot, seq } = (await call('hello', {})).value
@@ -251,8 +251,9 @@ test('a Bot\'s own chat message and its question card are notices; a hidden Bot-
   await emit(chat, { type: 'assistant/message', data: { turn: 3, message: { content: [{ type: 'text', text: `Report:\n\n${'x'.repeat(400)}` }] } } })
   rt.state.exchangeTurns[chat] = [4]
   await emit(chat, { type: 'assistant/message', data: { turn: 4, message: { content: [{ type: 'text', text: 'to another Bot' }] } } })
-  for (const def of rt.teamTools) ctx.tools.register(def)
-  await ctx.registeredTools.get('ask_user').execute({ question: 'Ship it?', options: [{ label: 'Yes' }, { label: 'No' }] }, { agent: { id: chat }, callId: 'q1' })
+  // ask_user is retired; a persisted card from an older version is injected into state, and the card itself still notifies.
+  rt.state.questions[chat] = { id: 'q1', callId: 'q1', question: 'Ship it?', options: [{ label: 'Yes' }, { label: 'No' }], multiSelect: false, askedAt: Date.now() }
+  rt.cardShown(chat, 'question', 'Ship it?')
   const { notices } = (await call('notices', { boot, since: seq })).value
   assert.deepEqual(notices.map(notice => [notice.kind, notice.botId, notice.name, notice.sessionId]), [['message', writer.id, 'Writer', chat], ['question', writer.id, 'Writer', chat]])
   assert.equal(notices[0].text.startsWith('Report: xxx'), true)

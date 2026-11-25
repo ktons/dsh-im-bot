@@ -47,10 +47,10 @@ async function start() {
       if (listener.length >= 2) listener({ id }, { type, seq: ++seq, data })
     }
   }
-  const ask = (sessionId, callId) => rt.teamTools.find(d => d.name === 'ask_user').execute(
-    { question: 'Which name?', options: [{ label: 'Lookout' }, { label: 'Scout' }] },
-    { agent: { id: sessionId }, callId, concludeTurn() {} },
-  )
+  // ask_user is retired; a persisted card from an older version is injected directly into state.
+  const ask = (sessionId, callId) => {
+    rt.state.questions[sessionId] = { id: `q-${callId}`, callId, question: 'Which name?', options: [{ label: 'Lookout' }, { label: 'Scout' }], multiSelect: false, askedAt: Date.now() }
+  }
   const questions = async () => (await (await route.fetch(new Request('http://localhost/api/bot', {
     method: 'POST', body: JSON.stringify({ endpoint: 'state', payload: {} }),
   }))).json()).value.questions
@@ -61,12 +61,12 @@ async function start() {
 
 const text = value => [{ type: 'text', text: value }]
 
-test('a card asked in a hidden Bot-to-Bot turn keeps its call id, and closing it records at that call', async (t) => {
+test('a legacy card asked in a hidden Bot-to-Bot turn keeps its call id, and closing it records at that call', async (t) => {
   const { emit, ask, questions, stop } = await start()
   t.after(stop)
   emit('writer', 'turn/start', { turn: 1 })
   emit('writer', 'user/message', { content: text('[Message from Chief]\nThe user wants a new Bot; ask them for its name'), source: { kind: 'bot', role: 'request', senderSessionId: 'chief', senderName: 'Chief', exchangeId: 'x1', hop: 0 } })
-  await ask('writer', 'call-1')
+  ask('writer', 'call-1')
   const asked = (await questions()).writer
   assert.equal(asked.question, 'Which name?')
   assert.equal(asked.callId, 'call-1')
@@ -75,18 +75,18 @@ test('a card asked in a hidden Bot-to-Bot turn keeps its call id, and closing it
   assert.deepEqual(rt.state.closedCards, { writer: { 'call-1': 'replied' } })
 })
 
-test('a card asked in a visible turn stays at its call', async (t) => {
+test('a legacy card asked in a visible turn stays at its call', async (t) => {
   const { emit, ask, questions, stop } = await start()
   t.after(stop)
   emit('writer', 'turn/start', { turn: 1 })
   emit('writer', 'user/message', { content: text('Help me name a Bot'), source: { kind: 'user' } })
-  await ask('writer', 'call-2')
+  ask('writer', 'call-2')
   assert.equal((await questions()).writer.callId, 'call-2')
 
   // A message that asks for an answer in the recipient's own chat is visible too.
   emit('writer', 'turn/end', { turn: 1, reason: { kind: 'completed' } })
   emit('writer', 'turn/start', { turn: 2 })
   emit('writer', 'user/message', { content: text('[Message from Chief · the user sees your reply here]\nIntroduce yourself'), source: { kind: 'bot', role: 'request', audience: 'user', senderSessionId: 'chief', senderName: 'Chief', exchangeId: 'x2', hop: 0 } })
-  await ask('writer', 'call-3')
+  ask('writer', 'call-3')
   assert.equal((await questions()).writer.callId, 'call-3')
 })
